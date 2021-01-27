@@ -16,7 +16,7 @@
 
 // tinobj implementation must be included last because it is alos included by voxelization.hpp (but no implementation)
 #define TINYOBJLOADER_IMPLEMENTATION 1
-#include "tinyobj.hpp"
+#include "3rd_party/tinyobj.hpp"
 
 // MACROS ==============================================================================================================
 

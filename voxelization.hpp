@@ -1,7 +1,7 @@
 #ifndef VOXELIZATION_HPP
 #define VOXELIZATION_HPP
 
-#include "tinyobj.hpp"
+#include "3rd_party/tinyobj.hpp"
 
 #include "voxelio/color.hpp"
 #include "voxelio/log.hpp"
