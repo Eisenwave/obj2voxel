@@ -233,15 +233,19 @@ void split(std::vector<TexturedTriangle> *preSplitBuffer,
                 preSplitBuffer->pop_back();
 
                 real_type min = triangle.min(axis);
-                auto lo = static_cast<unsigned>(std::ceil(min));
+                auto splittingPlane = static_cast<unsigned>(std::ceil(min));
                 // auto hi = static_cast<unsigned>(std::ceil(triangle.max(axis)));
 
-                split(axis, lo, triangle, *resultBuffer, *postSplitBuffer);
+                split(axis, splittingPlane, triangle, *resultBuffer, *postSplitBuffer);
             }
 
+            VXIO_DEBUG_ASSERT(preSplitBuffer->empty());
             // Everything that used to be after the split (hi side) now comes before the next round of splitting
             std::swap(preSplitBuffer, postSplitBuffer);
-        } while (not postSplitBuffer->empty());
+            VXIO_DEBUG_ASSERT(postSplitBuffer->empty());
+
+            // Warning: we just swapped preSplit and postSplit, so this condition actually refers to former postSplit
+        } while (not preSplitBuffer->empty());
 
         VXIO_DEBUG_ASSERT(preSplitBuffer->empty());
         VXIO_DEBUG_ASSERT(postSplitBuffer->empty());
@@ -257,16 +261,17 @@ void split(std::vector<TexturedTriangle> *preSplitBuffer,
 }
 
 void voxelize(const VisualTriangle &triangle,
-              std::vector<TexturedTriangle> buffers[2],
+              std::vector<TexturedTriangle> buffers[3],
               std::map<Vec3u, WeightedColor> &out)
 {
     VXIO_DEBUG_ASSERT_NOTNULL(buffers);
     buffers[0].clear();
     buffers[1].clear();
+    buffers[2].clear();
     out.clear();
 
     buffers[0].push_back(triangle);
-    split(buffers + 0, buffers + 1);
+    split(buffers + 0, buffers + 1, buffers + 2);
 
     for (TexturedTriangle t : buffers[1]) {
         real_type weight = t.area();

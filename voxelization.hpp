@@ -252,13 +252,16 @@ void split(const unsigned axis,
 /**
  * @brief Splits a buffer of triangles on all axes into pieces which don't intersect any axis plane.
  * The resulting triangles all fit exactly into AABBs or voxels.
- * @param cutBuffer the (notnull) buffer used for currently cut triangles; should be filled with a triangle at the start
- * @param resultBuffer the (notnull) buffer used for storing the resulting triangles
+ * @param preSplitBuffer the buffer used for currently cut triangles; should be filled with a triangle at the start
+ * @param postSplitBuffer intermediate buffer, should be empty
+ * @param resultBuffer the buffer used for storing the resulting triangles, should be empty
  */
-void split(std::vector<TexturedTriangle> *cutBuffer, std::vector<TexturedTriangle> *resultBuffer);
+void split(std::vector<TexturedTriangle> *preSplitBuffer,
+           std::vector<TexturedTriangle> *postSplitBuffer,
+           std::vector<TexturedTriangle> *resultBuffer);
 
 void voxelize(const VisualTriangle &triangle,
-              std::vector<TexturedTriangle> buffers[2],
+              std::vector<TexturedTriangle> buffers[3],
               std::map<Vec3u, WeightedColor> &out);
 
 }  // namespace obj2voxel

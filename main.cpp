@@ -146,7 +146,7 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
     VXIO_LOG(INFO, "Loaded all diffuse textures (" + stringifyDec(textures.size()) + ")")
 
     // Voxelize mesh
-    std::vector<TexturedTriangle> buffers[2];
+    std::vector<TexturedTriangle> buffers[3];
     std::map<Vec3u, WeightedColor> colorBuffer;
 
     // Loop over shapes
