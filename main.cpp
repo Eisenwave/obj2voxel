@@ -2,6 +2,7 @@
 #include "voxelization.hpp"
 
 #include "voxelio/filetype.hpp"
+#include "voxelio/format/png.hpp"
 #include "voxelio/format/qef.hpp"
 #include "voxelio/format/vl32.hpp"
 #include "voxelio/parse.hpp"
@@ -43,11 +44,6 @@ namespace obj2voxel {
 using namespace voxelio;
 using namespace mve;
 
-using svo_type = SparseVoxelOctree<Color32>;
-using svo_node_type = svo_type::node_type;
-using svo_branch_type = svo_type::branch_type;
-using svo_leaf_type = svo_type::leaf_type;
-
 AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 {
     switch (type) {
@@ -81,15 +77,35 @@ bool loadObj(const std::string &inFile,
     std::string err;
 
     bool tinyobjSuccess = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, inFile.c_str());
+    trim(warn);
+    trim(err);
 
     if (not warn.empty()) {
-        VXIO_LOG(WARNING, warn);
+        VXIO_LOG(WARNING, "TinyOBJ Warning: " + warn);
     }
     if (not err.empty()) {
-        VXIO_LOG(ERROR, err);
+        VXIO_LOG(ERROR, "TinyOBJ Error: " + err);
     }
 
     return tinyobjSuccess;
+}
+
+Texture loadTexture(const std::string &name)
+{
+    std::optional<FileInputStream> stream = FileInputStream::open(name);
+    if (not stream.has_value()) {
+        VXIO_LOG(ERROR, "Failed to open texture file \"" + name + '\"');
+        std::exit(1);
+    }
+
+    std::optional<Image> image = voxelio::png::decode(*stream, 4);
+    if (not stream.has_value()) {
+        VXIO_LOG(ERROR, "Failed to decode texture file \"" + name + '"');
+        std::exit(1);
+    }
+
+    VXIO_LOG(INFO, "Loaded texture \"" + name + "\"");
+    return std::move(*image);
 }
 
 std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize resolution, ColorStrategy colorStrategy)
@@ -105,7 +121,7 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
         std::exit(1);
     }
     if (attrib.vertices.empty()) {
-        VXIO_LOG(INFO, "Model has no vertices");
+        VXIO_LOG(WARNING, "Model has no vertices, aborting and writing empty voxel model");
         return voxels;
     }
     VXIO_LOG(INFO, "Loaded OBJ model with " + stringify(attrib.vertices.size() / 3) + " vertices");
@@ -120,8 +136,16 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
         return (v + meshMin) * scaleFactor;
     };
 
-    // Voxelize mesh
+    // Load textures
     std::map<std::string, Texture> textures;
+    for (tinyobj::material_t &material : materials) {
+        std::string name = material.diffuse_texname;
+        Texture tex = loadTexture(name);
+        textures.emplace(std::move(name), std::move(tex));
+    }
+    VXIO_LOG(INFO, "Loaded all diffuse textures (" + stringifyDec(textures.size()) + ")")
+
+    // Voxelize mesh
     std::vector<TexturedTriangle> buffers[2];
     std::map<Vec3u, WeightedColor> colorBuffer;
 
@@ -143,7 +167,7 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
                 // access to vertex
                 tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
                 if (idx.vertex_index < 0) {
-                    VXIO_LOG(ERROR, "vertex without vertex coordinates found");
+                    VXIO_LOG(ERROR, "Vertex without vertex coordinates found");
                     exit(1);
                 }
                 Vec3 &vertex = triangle.v[v];
@@ -164,7 +188,13 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
                 triangle.type = TriangleType::MATERIALLESS;
             }
             else if (hasTexCoords) {
-                triangle.texture = &textures[materials[static_cast<usize>(materialIndex)].diffuse_texname];
+                const std::string &textureName = materials[static_cast<usize>(materialIndex)].diffuse_texname;
+                auto location = textures.find(textureName);
+                if (location == textures.end()) {
+                    VXIO_LOG(ERROR, "Face has invalid texture name \"" + textureName + '"');
+                    std::exit(1);
+                }
+                triangle.texture = &location->second;
                 triangle.type = TriangleType::TEXTURED;
             }
             else {
@@ -188,6 +218,12 @@ constexpr usize VOXEL_BUFFER_64_SIZE = 8 * 1024;
 constexpr usize VOXEL_BUFFER_32_SIZE = VOXEL_BUFFER_64_SIZE * 2;
 
 static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
+
+#if 0
+using svo_type = SparseVoxelOctree<Color32>;
+using svo_node_type = svo_type::node_type;
+using svo_branch_type = svo_type::branch_type;
+using svo_leaf_type = svo_type::leaf_type;
 
 [[nodiscard]] int convert_svo_voxelio(svo_type &svo, FileType outFormat, FileOutputStream &out)
 {
@@ -241,6 +277,7 @@ static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
     VXIO_LOG(INFO, "Done!");
     return resultCode;
 }
+#endif
 
 [[nodiscard]] int convert_map_voxelio(std::map<Vec3u, WeightedColor> &map,
                                       usize resolution,
@@ -249,6 +286,13 @@ static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
 {
     std::unique_ptr<AbstractListWriter> writer{makeWriter(out, outFormat)};
     writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
+
+    if (requiresPalette(outFormat)) {
+        Palette32 &palette = writer->palette();
+        for (auto [pos, color] : map) {
+            palette.insert(color.toColor32());
+        }
+    }
 
     usize voxelCount = 0;
     usize voxelIndex = 0;
@@ -279,14 +323,21 @@ static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
     VXIO_LOG(INFO, "Flushing remaining " + stringify(voxelIndex) + " voxels ...");
     VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
 
-    int resultCode = not flushBuffer();
+    bool finalSuccess = flushBuffer();
+    if (not finalSuccess) {
+        return 1;
+    }
 
     VXIO_LOG(INFO, "Done!");
-    return resultCode;
+    return 0;
 }
 
 int main_impl(std::string inFile, std::string outFile, std::string resolutionStr, std::string colorStratStr)
 {
+    VXIO_LOG(INFO,
+             "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + resolutionStr + " with strategy " +
+                 colorStratStr);
+
     if (inFile.empty()) {
         VXIO_LOG(ERROR, "Input file path must not be empty");
         return 1;
@@ -319,6 +370,7 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
 
     // all the actual work is done in these two lines
     std::map<Vec3u, WeightedColor> weightedVoxels = voxelize_obj(inFile, resolution, colorStrategy);
+    VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
     bool success = convert_map_voxelio(weightedVoxels, resolution, *outType, *outStream);
 
     return not success;
@@ -334,6 +386,10 @@ int main(OBJ2VOXEL_MAIN_PARAMS)
         return 1;
     }
 #endif
+    if constexpr (voxelio::build::DEBUG) {
+        voxelio::logLevel = voxelio::LogLevel::DEBUG;
+        VXIO_LOG(DEBUG, "Running debug build");
+    }
 
     std::string inFile = OBJ2VOXEL_TEST_STRING(argv[1], "/tmp/obj2voxel/in.obj");
     std::string outFile = OBJ2VOXEL_TEST_STRING(argv[2], "/tmp/obj2voxel/out.qef");

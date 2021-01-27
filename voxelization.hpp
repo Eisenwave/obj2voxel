@@ -4,6 +4,7 @@
 #include "3rd_party/tinyobj.hpp"
 
 #include "voxelio/color.hpp"
+#include "voxelio/image.hpp"
 #include "voxelio/log.hpp"
 #include "voxelio/vec.hpp"
 
@@ -138,10 +139,14 @@ struct Triangle {
         return v[index];
     }
 
+    constexpr Vec3 edge(usize start, usize end) const
+    {
+        return vertex(end) - vertex(start);
+    }
+
     constexpr Vec3 edge(usize index) const
     {
-        VXIO_DEBUG_ASSERT_LT(index, 3);
-        return v[(index + 1) % 3] - v[index];
+        return edge(index, (index + 1) % 3);
     }
 
     constexpr real_type min(usize i) const
@@ -176,9 +181,16 @@ struct Triangle {
 };
 
 struct Texture {
+    Image image;
+
+    Texture(Image image) : image{std::move(image)}
+    {
+        image.setWrapMode(WrapMode::CLAMP);
+    }
+
     Vec3f get(Vec2 uv) const
     {
-        return {};
+        return image.getPixel(uv).vecf();
     }
 };
 
