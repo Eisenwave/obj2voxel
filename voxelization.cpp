@@ -1,7 +1,7 @@
 #include "voxelization.hpp"
 
-#include <set>
 #include <cmath>
+#include <set>
 #include <vector>
 
 namespace obj2voxel {
@@ -105,8 +105,7 @@ void split(const unsigned axis,
     // clang-format on
 }
 
-void split(std::vector<TexturedTriangle> *cutBuffer,
-           std::vector<TexturedTriangle> *resultBuffer)
+void split(std::vector<TexturedTriangle> *cutBuffer, std::vector<TexturedTriangle> *resultBuffer)
 {
     VXIO_DEBUG_ASSERT_NOTNULL(cutBuffer);
     VXIO_DEBUG_ASSERT_NOTNULL(resultBuffer);
@@ -156,4 +155,4 @@ void voxelize(const VisualTriangle &triangle,
     }
 }
 
-}
+}  // namespace obj2voxel

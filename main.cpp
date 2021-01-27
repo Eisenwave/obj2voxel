@@ -1,16 +1,16 @@
 #include "svo.hpp"
 #include "voxelization.hpp"
 
-#include "voxelio/stringmanip.hpp"
-#include "voxelio/stream.hpp"
 #include "voxelio/filetype.hpp"
-#include "voxelio/voxelio.hpp"
-#include "voxelio/parse.hpp"
 #include "voxelio/format/qef.hpp"
 #include "voxelio/format/vl32.hpp"
+#include "voxelio/parse.hpp"
+#include "voxelio/stream.hpp"
+#include "voxelio/stringmanip.hpp"
+#include "voxelio/voxelio.hpp"
 
-#include <memory>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -214,7 +214,7 @@ static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
             continue;
         }
         usize baseIndex = iter.index();
-        auto *leaf = downcast<svo_leaf_type*>(iter.node());
+        auto *leaf = downcast<svo_leaf_type *>(iter.node());
 
         for (usize i = 0; i < 8; ++i) {
             Vec3u32 uPos;
@@ -324,7 +324,7 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
     return not success;
 }
 
-} // namespace obj2voxel
+}  // namespace obj2voxel
 
 int main(OBJ2VOXEL_MAIN_PARAMS)
 {

@@ -3,9 +3,9 @@
 
 #include "tinyobj.hpp"
 
-#include "voxelio/vec.hpp"
-#include "voxelio/log.hpp"
 #include "voxelio/color.hpp"
+#include "voxelio/log.hpp"
+#include "voxelio/vec.hpp"
 
 namespace obj2voxel {
 
@@ -18,11 +18,7 @@ using real_type = tinyobj::real_t;
 using Vec2 = Vec<real_type, 2>;
 using Vec3 = Vec<real_type, 3>;
 
-enum class TriangleType {
-    MATERIALLESS,
-    UNTEXTURED,
-    TEXTURED
-};
+enum class TriangleType { MATERIALLESS, UNTEXTURED, TEXTURED };
 
 struct WeightedColor {
     float weight;
@@ -63,7 +59,7 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 /**
  * @brief Applies a binary function to each component of two vectors and returns the result.
  */
-template <typename T, size_t N, const T&(*functor)(const T&, const T&)>
+template <typename T, size_t N, const T &(*functor)(const T &, const T &)>
 constexpr Vec<T, N> applyForEach(Vec<T, N> a, Vec<T, N> b)
 {
     Vec<T, N> result{};
@@ -125,10 +121,9 @@ constexpr const WeightedColor &max(const WeightedColor &lhs, const WeightedColor
 
 inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, WeightedColor color, ColorStrategy strategy)
 {
-    auto [location,success] = map.emplace(pos, color);
+    auto [location, success] = map.emplace(pos, color);
     if (not success) {
-        location->second = strategy == ColorStrategy::MAX ? max(color, location->second)
-                                                          : mix(color, location->second);
+        location->second = strategy == ColorStrategy::MAX ? max(color, location->second) : mix(color, location->second);
     }
 }
 
@@ -137,12 +132,14 @@ inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, Weighted
 struct Triangle {
     Vec3 v[3];
 
-    constexpr Vec3 vertex(usize index) const {
+    constexpr Vec3 vertex(usize index) const
+    {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return v[index];
     }
 
-    constexpr Vec3 edge(usize index) const {
+    constexpr Vec3 edge(usize index) const
+    {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return v[(index + 1) % 3] - v[index];
     }
@@ -157,11 +154,13 @@ struct Triangle {
         return obj2voxel::max(v[0][i], v[1][i], v[2][i]);
     }
 
-    constexpr Vec3 min() const {
+    constexpr Vec3 min() const
+    {
         return obj2voxel::min(obj2voxel::min(v[0], v[1]), v[2]);
     }
 
-    constexpr Vec3 max() const {
+    constexpr Vec3 max() const
+    {
         return obj2voxel::min(obj2voxel::min(v[0], v[1]), v[2]);
     }
 
@@ -170,7 +169,8 @@ struct Triangle {
         return length(cross(edge(0), edge(1))) / 2;
     }
 
-    constexpr Vec3 center() const {
+    constexpr Vec3 center() const
+    {
         return (v[0] + v[1] + v[2]) / 3;
     }
 };
@@ -185,12 +185,14 @@ struct Texture {
 struct TexturedTriangle : public Triangle {
     Vec2 t[3];
 
-    constexpr Vec2 texture(usize index) const {
+    constexpr Vec2 texture(usize index) const
+    {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return t[index];
     }
 
-    constexpr Vec2 textureCenter() const {
+    constexpr Vec2 textureCenter() const
+    {
         return (t[0] + t[1] + t[2]) / 3;
     }
 };
@@ -241,13 +243,12 @@ void split(const unsigned axis,
  * @param cutBuffer the (notnull) buffer used for currently cut triangles; should be filled with a triangle at the start
  * @param resultBuffer the (notnull) buffer used for storing the resulting triangles
  */
-void split(std::vector<TexturedTriangle> *cutBuffer,
-           std::vector<TexturedTriangle> *resultBuffer);
+void split(std::vector<TexturedTriangle> *cutBuffer, std::vector<TexturedTriangle> *resultBuffer);
 
 void voxelize(const VisualTriangle &triangle,
               std::vector<TexturedTriangle> buffers[2],
               std::map<Vec3u, WeightedColor> &out);
 
-} // namespace obj2voxel
+}  // namespace obj2voxel
 
-#endif // VOXELIZATION_HPP
+#endif  // VOXELIZATION_HPP

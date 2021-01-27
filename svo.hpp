@@ -1,11 +1,11 @@
 #ifndef SVO_HPP
 #define SVO_HPP
 
+#include "voxelio/assert.hpp"
+#include "voxelio/bits.hpp"
 #include "voxelio/ileave.hpp"
 #include "voxelio/stringify.hpp"
 #include "voxelio/vec.hpp"
-#include "voxelio/assert.hpp"
-#include "voxelio/bits.hpp"
 
 #include <array>
 #include <bitset>
