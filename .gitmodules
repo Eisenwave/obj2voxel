@@ -1,0 +1,3 @@
+[submodule "voxel-io"]
+	path = voxelio
+	url = git@github.com:Eisenwave/voxel-io.git
