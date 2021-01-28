@@ -1,8 +1,8 @@
 #ifndef TRIANGLE_HPP
 #define TRIANGLE_HPP
 
-#include "voxelio/vec.hpp"
 #include "voxelio/image.hpp"
+#include "voxelio/vec.hpp"
 
 #include "3rd_party/tinyobj.hpp"
 
@@ -231,16 +231,8 @@ struct TexturedTriangle : public Triangle {
 
     constexpr void subdivide4(TexturedTriangle out[4]) const
     {
-        Vec3 geo[3]{
-            mix(v[0], v[1], 0.5f),
-            mix(v[1], v[2], 0.5f),
-            mix(v[2], v[0], 0.5f)
-        };
-        Vec2 tex[3]{
-            mix(t[0], t[1], 0.5f),
-            mix(t[1], t[2], 0.5f),
-            mix(t[2], t[0], 0.5f)
-        };
+        Vec3 geo[3]{mix(v[0], v[1], 0.5f), mix(v[1], v[2], 0.5f), mix(v[2], v[0], 0.5f)};
+        Vec2 tex[3]{mix(t[0], t[1], 0.5f), mix(t[1], t[2], 0.5f), mix(t[2], t[0], 0.5f)};
 
         out[0] = {{geo[0], geo[1], geo[2]}, {tex[0], tex[1], tex[2]}};
         out[1] = {{v[0], geo[0], geo[2]}, {t[0], tex[0], tex[2]}};
@@ -273,6 +265,6 @@ struct VisualTriangle : public TexturedTriangle {
     }
 };
 
-}
+}  // namespace obj2voxels
 
-#endif // TRIANGLE_HPP
+#endif  // TRIANGLE_HPP

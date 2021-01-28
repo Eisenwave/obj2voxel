@@ -13,7 +13,7 @@ using namespace voxelio;
 
 // SIMPLE STRUCTS AND TYPEDEFS =========================================================================================
 
-extern void(*globalTriangleDebugCallback)(const Triangle &triangle);
+extern void (*globalTriangleDebugCallback)(const Triangle &triangle);
 
 struct WeightedColor {
     float weight;
@@ -75,6 +75,6 @@ void voxelize(const VisualTriangle &triangle,
               std::vector<TexturedTriangle> buffers[3],
               std::map<Vec3u, WeightedColor> &out);
 
-}  // namespace obj2voxel
+}  // namespace obj2voxels
 
 #endif  // VOXELIZATION_HPP

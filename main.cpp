@@ -161,7 +161,9 @@ Texture loadTexture(const std::string &name)
     return std::move(*image);
 }
 
-std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, const usize resolution, const ColorStrategy colorStrategy)
+std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
+                                            const usize resolution,
+                                            const ColorStrategy colorStrategy)
 {
     constexpr real_type antiBleed = 0.5f;
 
@@ -204,8 +206,8 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, const usi
     std::vector<TexturedTriangle> buffers[3];
     std::map<Vec3u, WeightedColor> colorBuffer;
 
-    const auto insertionFunction = colorStrategy == ColorStrategy::BLEND ? insertColor<ColorStrategy::BLEND>
-                                                                         : insertColor<ColorStrategy::MAX>;
+    const auto insertionFunction =
+        colorStrategy == ColorStrategy::BLEND ? insertColor<ColorStrategy::BLEND> : insertColor<ColorStrategy::MAX>;
 
     usize triangleCount = 0;
 
@@ -458,11 +460,10 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
     ByteArrayInputStream inStream{globalDebugStl};
     do {
         inStream.read(buffer, 50);
-        if (inStream.eof())
-            break;
+        if (inStream.eof()) break;
         stlDump->write(buffer, 50);
     } while (true);
-    #endif
+#endif
 
     VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
     bool success = convert_map_voxelio(weightedVoxels, resolution, *outType, *outStream);
@@ -470,7 +471,7 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
     return not success;
 }
 
-}  // namespace obj2voxel
+}  // namespace obj2voxels
 
 int main(OBJ2VOXEL_MAIN_PARAMS)
 {

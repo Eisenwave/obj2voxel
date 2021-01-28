@@ -6,11 +6,11 @@
 
 namespace obj2voxels {
 
-void(*globalTriangleDebugCallback)(const Triangle &triangle) = [](auto){};
+void (*globalTriangleDebugCallback)(const Triangle &triangle) = [](auto) {};
 
 namespace {
 
-constexpr bool DISABLE_PLANE_DISTANCE_TEST = true;
+constexpr bool DISABLE_PLANE_DISTANCE_TEST = false;
 constexpr real_type EPSILON = real_type(1) / (1 << 16);
 
 constexpr bool isZero(real_type x)
@@ -50,10 +50,10 @@ enum class DiscardMode {
  */
 template <DiscardMode DISCARD_MODE = DiscardMode::NONE>
 void splitTriangle(const unsigned axis,
-           const unsigned plane,
-           TexturedTriangle t,
-           std::vector<TexturedTriangle> &outLo,
-           std::vector<TexturedTriangle> &outHi)
+                   const unsigned plane,
+                   TexturedTriangle t,
+                   std::vector<TexturedTriangle> &outLo,
+                   std::vector<TexturedTriangle> &outHi)
 {
     // This local helper function lets us insert into outLo or outHi using a one-liner while still considering the
     // DISCARD_MODE.
@@ -370,15 +370,14 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
     }
 }
 
-[[nodiscard]]
-WeightedColor voxelizeVoxel(const VisualTriangle &inputTriangle,
-                            Vec3u pos,
-                            std::vector<TexturedTriangle> *preSplitBuffer,
-                            std::vector<TexturedTriangle> *postSplitBuffer)
+[[nodiscard]] WeightedColor voxelizeVoxel(const VisualTriangle &inputTriangle,
+                                          Vec3u pos,
+                                          std::vector<TexturedTriangle> *preSplitBuffer,
+                                          std::vector<TexturedTriangle> *postSplitBuffer)
 {
     for (unsigned hi = 0; hi < 2; ++hi) {
-        const auto splittingFunction = hi ? splitTriangle<DiscardMode::DISCARD_HI>
-                                          : splitTriangle<DiscardMode::DISCARD_LO>;
+        const auto splittingFunction =
+            hi ? splitTriangle<DiscardMode::DISCARD_HI> : splitTriangle<DiscardMode::DISCARD_LO>;
 
         for (unsigned axis = 0; axis < 3; ++axis) {
             const unsigned plane = pos[axis] + hi;
@@ -478,7 +477,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
     }
 }
 
-} // namespace
+}  // namespace
 
 void voxelize(const VisualTriangle &inputTriangle,
               std::vector<TexturedTriangle> buffers[3],
@@ -505,4 +504,4 @@ void voxelize(const VisualTriangle &inputTriangle,
     }
 }
 
-}  // namespace obj2voxel
+}  // namespace obj2voxels
