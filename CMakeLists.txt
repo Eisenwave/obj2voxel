@@ -19,7 +19,7 @@ else()
 endif()
 
 add_subdirectory(voxelio)
-add_executable(obj2voxels main.cpp svo.hpp 3rd_party/tinyobj.hpp triangle.hpp voxelization.cpp voxelization.hpp)
+add_executable(obj2voxels main.cpp 3rd_party/tinyobj.hpp triangle.hpp voxelization.cpp voxelization.hpp)
 target_link_libraries(obj2voxels voxelio)
 
 target_include_directories(obj2voxels PUBLIC voxelio/include)

@@ -1,4 +1,3 @@
-#include "svo.hpp"
 #include "voxelization.hpp"
 
 #include "voxelio/filetype.hpp"
@@ -43,20 +42,9 @@
 namespace obj2voxels {
 
 using namespace voxelio;
-using namespace mve;
 
 #ifdef OBJ2VOXEL_DUMP_STL
 static ByteArrayOutputStream globalDebugStl;
-
-void writeVecAsText(OutputStream &stream, Vec3 v)
-{
-    stream.writeString(stringify(v.x()));
-    stream.write(' ');
-    stream.writeString(stringify(v.y()));
-    stream.write(' ');
-    stream.writeString(stringify(v.z()));
-}
-
 void writeVecAsBinary(OutputStream &stream, Vec3 v)
 {
     stream.writeLittle<float>(v[0]);
@@ -93,15 +81,6 @@ void writeTriangleAsBinaryToDebugStl(const Triangle &triangle)
     globalDebugStl.writeLittle<u16>(0);
 }
 #endif
-
-AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
-{
-    switch (type) {
-    case FileType::QUBICLE_EXCHANGE: return new qef::Writer{stream};
-    case FileType::VL32: return new vl32::Writer{stream};
-    default: VXIO_ASSERT_UNREACHABLE();
-    }
-}
 
 void findBoundaries(const std::vector<real_type> &points, Vec3 &outMin, Vec3 &outMax)
 {
@@ -282,70 +261,19 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
     return voxels;
 }
 
-constexpr usize VOXEL_BUFFER_64_SIZE = 8 * 1024;
-constexpr usize VOXEL_BUFFER_32_SIZE = VOXEL_BUFFER_64_SIZE * 2;
+constexpr usize VOXEL_BUFFER_BYTE_SIZE = 8192;
+constexpr usize VOXEL_BUFFER_32_SIZE = VOXEL_BUFFER_BYTE_SIZE / sizeof(Voxel32);
 
 static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
 
-#if 0
-using svo_type = SparseVoxelOctree<Color32>;
-using svo_node_type = svo_type::node_type;
-using svo_branch_type = svo_type::branch_type;
-using svo_leaf_type = svo_type::leaf_type;
-
-[[nodiscard]] int convert_svo_voxelio(svo_type &svo, FileType outFormat, FileOutputStream &out)
+AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 {
-    std::unique_ptr<AbstractListWriter> writer{makeWriter(out, outFormat)};
-
-    usize voxelCount = 0;
-    usize voxelIndex = 0;
-
-    const auto flushBuffer = [&writer, &voxelIndex]() -> bool {
-        voxelio::ResultCode writeResult = writer->write(VOXEL_BUFFER_32, voxelIndex);
-        if (not voxelio::isGood(writeResult)) {
-            VXIO_LOG(ERROR, "Flush/Write error: " + informativeNameOf(writeResult));
-            return false;
-        }
-        voxelIndex = 0;
-        return true;
-    };
-
-    Vec3i32 svoMin = svo.minIncl();
-    auto end = svo.depthFirstNodeRange().end();
-
-    for (auto iter = svo.depthFirstNodeRange().begin(); iter != end; ++iter) {
-        if (iter.isAtBranch()) {
-            continue;
-        }
-        usize baseIndex = iter.index();
-        auto *leaf = downcast<svo_leaf_type *>(iter.node());
-
-        for (usize i = 0; i < 8; ++i) {
-            Vec3u32 uPos;
-            voxelio::dileave3(baseIndex + i, uPos.data());
-            Vec3i32 pos = uPos.cast<i32>() + svoMin;
-            Color32 color = leaf->at(i);
-
-            ++voxelCount;
-
-            VOXEL_BUFFER_32[voxelIndex] = {pos, {color}};
-            if (++voxelIndex == VOXEL_BUFFER_32_SIZE) {
-                if (not flushBuffer()) {
-                    return 1;
-                }
-            }
-        }
-    };
-
-    VXIO_LOG(INFO, "Flushing remaining " + stringify(voxelIndex) + " voxels ...");
-    VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
-
-    int resultCode = not flushBuffer();
-
-    VXIO_LOG(INFO, "Done!");
-    return resultCode;
+    switch (type) {
+    case FileType::QUBICLE_EXCHANGE: return new qef::Writer{stream};
+    case FileType::VL32: return new vl32::Writer{stream};
+    default: VXIO_ASSERT_UNREACHABLE();
+    }
 }
-#endif
 
 [[nodiscard]] int convert_map_voxelio(std::map<Vec3u, WeightedColor> &map,
                                       usize resolution,
