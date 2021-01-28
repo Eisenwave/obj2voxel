@@ -13,8 +13,10 @@ using namespace voxelio;
 
 // SIMPLE STRUCTS AND TYPEDEFS =========================================================================================
 
+/// A function called on debug builds which can be used to dump triangles to an STL file and such.
 extern void (*globalTriangleDebugCallback)(const Triangle &triangle);
 
+/// A color and a weight.
 struct WeightedColor {
     float weight;
     Vec3f color;
@@ -25,9 +27,7 @@ struct WeightedColor {
     }
 };
 
-/**
- * @brief An enum which describes the strategy for coloring in voxels from triangles.
- */
+/// An enum which describes the strategy for coloring in voxels from triangles.
 enum class ColorStrategy {
     /// For the maximum strategy, the triangle with the greatest area is chosen as the color.
     MAX,
@@ -36,6 +36,7 @@ enum class ColorStrategy {
     BLEND
 };
 
+/// Parses the color strategy. This function is case sensitive.
 inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 {
     if (str == "MAX") {
@@ -51,17 +52,20 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 
 // UTILITY FUNCTIONS ===================================================================================================
 
+/// Mixes two colors based on their weights.
 constexpr WeightedColor mix(const WeightedColor &lhs, const WeightedColor &rhs)
 {
     float weightSum = lhs.weight + rhs.weight;
     return {weightSum, (lhs.weight * lhs.color + rhs.weight * rhs.color) / weightSum};
 }
 
+/// Chooses the color with the greater weight.
 constexpr const WeightedColor &max(const WeightedColor &lhs, const WeightedColor &rhs)
 {
     return lhs.weight > rhs.weight ? lhs : rhs;
 }
 
+/// Emplaces a color in a map at the given location or combines it with the already stored color.
 template <ColorStrategy STRATEGY>
 inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, WeightedColor color)
 {
@@ -71,6 +75,18 @@ inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, Weighted
     }
 }
 
+/**
+ * @brief Voxelizes a triangle.
+ *
+ * Among the parameters is an array of three buffers.
+ * This array must be notnull.
+ * The contents of the buffers are cleared by the callee, this parameter is only used so that allocation of new vectors
+ * can be avoided for each triangle.
+ *
+ * @param triangle the input triangle to be voxelized
+ * @param buffers three buffers which are used for intermediate operations
+ * @param out the output map of voxel locations to weighted colors
+ */
 void voxelize(const VisualTriangle &triangle,
               std::vector<TexturedTriangle> buffers[3],
               std::map<Vec3u, WeightedColor> &out);

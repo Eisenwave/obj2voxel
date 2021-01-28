@@ -15,7 +15,15 @@ using real_type = tinyobj::real_t;
 using Vec2 = Vec<real_type, 2>;
 using Vec3 = Vec<real_type, 3>;
 
-enum class TriangleType { MATERIALLESS, UNTEXTURED, TEXTURED };
+/// The type of a triangle in terms of material.
+enum class TriangleType {
+    /// For triangles with no material. Such triangles are voxelized as white by default.
+    MATERIALLESS,
+    /// For triangles with no texture but with a solid color.
+    UNTEXTURED,
+    /// For triangles with a texture.
+    TEXTURED
+};
 
 // UTILITY FUNCTIONS ===================================================================================================
 
@@ -70,6 +78,7 @@ constexpr T max(const T &a, const T &b, const T &c)
     }
 }
 
+/// Computes the component-wise floor of the vector.
 template <typename T, size_t N>
 constexpr Vec<T, N> floor(Vec<T, N> v)
 {
@@ -80,6 +89,7 @@ constexpr Vec<T, N> floor(Vec<T, N> v)
     return result;
 }
 
+/// Computes the component-wise ceil of the vector.
 template <typename T, size_t N>
 constexpr Vec<T, N> ceil(Vec<T, N> v)
 {
@@ -90,6 +100,7 @@ constexpr Vec<T, N> ceil(Vec<T, N> v)
     return result;
 }
 
+/// Computes the component-wise abs of the vector.
 template <typename T, size_t N>
 constexpr Vec<T, N> abs(Vec<T, N> v)
 {
@@ -100,6 +111,7 @@ constexpr Vec<T, N> abs(Vec<T, N> v)
     return result;
 }
 
+/// Computes the length or magnitude of the vector.
 template <typename T, size_t N>
 T length(Vec<T, N> v)
 {
@@ -107,12 +119,14 @@ T length(Vec<T, N> v)
     return result;
 }
 
+/// Divides a vector by its length.
 template <typename T, size_t N>
 constexpr Vec<T, N> normalize(Vec<T, N> v)
 {
     return v / length(v);
 }
 
+/// Mixes or linearly interpolates two vectors.
 template <typename T, size_t N>
 constexpr Vec<T, N> mix(Vec<T, N> a, Vec<T, N> b, T t)
 {
@@ -121,6 +135,7 @@ constexpr Vec<T, N> mix(Vec<T, N> a, Vec<T, N> b, T t)
 
 // TRIANGLES ===========================================================================================================
 
+/// A 3D triangle.
 struct Triangle {
     Vec3 v[3];
 
@@ -201,34 +216,42 @@ struct Triangle {
     }
 };
 
+/// Wrapper class for voxelio images.
 struct Texture {
     Image image;
 
+    /// Constructs the texture from a voxelio image.
     Texture(Image image) : image{std::move(image)}
     {
         image.setWrapMode(WrapMode::CLAMP);
     }
 
+    /// Returns the color at the given uv coordinates as a vector.
     Vec3f get(Vec2 uv) const
     {
+        // TODO move uv transformation on y-axis here instead of doing it in VisualTriangle
         return image.getPixel(uv).vecf();
     }
 };
 
+/// A triangle that also has UV coordinates.
 struct TexturedTriangle : public Triangle {
     Vec2 t[3];
 
+    /// Returns the texture coordinates at the index in [0,3).
     constexpr Vec2 texture(usize index) const
     {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return t[index];
     }
 
+    /// Returns the center of the UV coordinates.
     constexpr Vec2 textureCenter() const
     {
         return (t[0] + t[1] + t[2]) / 3;
     }
 
+    /// Subdivides this triangle into four new triangles in a "triforce" or Sierpinski pattern.
     constexpr void subdivide4(TexturedTriangle out[4]) const
     {
         Vec3 geo[3]{mix(v[0], v[1], 0.5f), mix(v[1], v[2], 0.5f), mix(v[2], v[0], 0.5f)};
@@ -241,6 +264,7 @@ struct TexturedTriangle : public Triangle {
     }
 };
 
+/// A textured triangle that also has material information.
 struct VisualTriangle : public TexturedTriangle {
     TriangleType type;
     union {
@@ -249,6 +273,7 @@ struct VisualTriangle : public TexturedTriangle {
     };
 
     VisualTriangle() : texture{nullptr} {}
+
     constexpr VisualTriangle(TriangleType type) : type{type}, texture{nullptr} {}
 
     Vec3f colorAt_f(Vec2 uv) const
