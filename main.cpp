@@ -22,7 +22,8 @@
 // MACROS ==============================================================================================================
 
 // comment out when building
-#define OBJ2VOXEL_TEST
+//#define OBJ2VOXEL_TEST
+//#define OBJ2VOXEL_DUMP_STL
 
 #ifndef OBJ2VOXEL_TEST
 #define OBJ2VOXEL_MAIN_PARAMS int argc, char **argv
@@ -39,10 +40,59 @@
 
 // IMPLEMENTATION ======================================================================================================
 
-namespace obj2voxel {
+namespace obj2voxels {
 
 using namespace voxelio;
 using namespace mve;
+
+#ifdef OBJ2VOXEL_DUMP_STL
+static ByteArrayOutputStream globalDebugStl;
+
+void writeVecAsText(OutputStream &stream, Vec3 v)
+{
+    stream.writeString(stringify(v.x()));
+    stream.write(' ');
+    stream.writeString(stringify(v.y()));
+    stream.write(' ');
+    stream.writeString(stringify(v.z()));
+}
+
+void writeVecAsBinary(OutputStream &stream, Vec3 v)
+{
+    stream.writeLittle<float>(v[0]);
+    stream.writeLittle<float>(v[1]);
+    stream.writeLittle<float>(v[2]);
+}
+
+void writeTriangleAsTextToDebugStl(const Triangle &triangle)
+{
+    Vec3 normal = triangle.normal();
+
+    globalDebugStl.writeString("facet normal ");
+    writeVecAsText(globalDebugStl, normal);
+    globalDebugStl.write('\n');
+    globalDebugStl.writeString("  outer loop\n");
+    for (usize i = 0; i < 3; ++i) {
+        globalDebugStl.writeString("    vertex ");
+        writeVecAsText(globalDebugStl, triangle.vertex(i));
+        globalDebugStl.write('\n');
+    }
+    globalDebugStl.writeString("  endloop\n");
+    globalDebugStl.writeString("endfacet\n");
+}
+
+void writeTriangleAsBinaryToDebugStl(const Triangle &triangle)
+{
+    Vec3 normal = triangle.normal();
+    normal /= length(normal);
+
+    writeVecAsBinary(globalDebugStl, normal);
+    writeVecAsBinary(globalDebugStl, triangle.vertex(0));
+    writeVecAsBinary(globalDebugStl, triangle.vertex(1));
+    writeVecAsBinary(globalDebugStl, triangle.vertex(2));
+    globalDebugStl.writeLittle<u16>(0);
+}
+#endif
 
 AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 {
@@ -60,8 +110,8 @@ void findBoundaries(const std::vector<real_type> &points, Vec3 &outMin, Vec3 &ou
 
     for (size_t i = 0; i < points.size(); i += 3) {
         Vec3 p{points.data() + i};
-        min = obj2voxel::min(min, p);
-        max = obj2voxel::max(max, p);
+        min = obj2voxels::min(min, p);
+        max = obj2voxels::max(max, p);
     }
 
     outMin = min;
@@ -81,10 +131,13 @@ bool loadObj(const std::string &inFile,
     trim(err);
 
     if (not warn.empty()) {
-        VXIO_LOG(WARNING, "TinyOBJ Warning: " + warn);
+        std::vector<std::string> warnings = splitAtDelimiter(warn, '\n');
+        for (const std::string &warning : warnings) {
+            VXIO_LOG(WARNING, "TinyOBJ: " + warning);
+        }
     }
     if (not err.empty()) {
-        VXIO_LOG(ERROR, "TinyOBJ Error: " + err);
+        VXIO_LOG(ERROR, "TinyOBJ: " + err);
     }
 
     return tinyobjSuccess;
@@ -108,8 +161,10 @@ Texture loadTexture(const std::string &name)
     return std::move(*image);
 }
 
-std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize resolution, ColorStrategy colorStrategy)
+std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, const usize resolution, const ColorStrategy colorStrategy)
 {
+    constexpr real_type antiBleed = 0.5f;
+
     std::map<Vec3u, WeightedColor> voxels;
 
     // Load obj model
@@ -130,10 +185,10 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
     Vec3 meshMin, meshMax;
     findBoundaries(attrib.vertices, meshMin, meshMax);
     const Vec3 meshSize = meshMax - meshMin;
-    const real_type scaleFactor = (real_type(resolution) - 0.5f) / max(meshSize[0], meshSize[1], meshSize[2]);
+    const real_type scaleFactor = (real_type(resolution) - antiBleed) / max(meshSize[0], meshSize[1], meshSize[2]);
 
     const auto transform = [meshMin, scaleFactor](Vec3 v) -> Vec3 {
-        return (v + meshMin) * scaleFactor;
+        return (v - meshMin) * scaleFactor + Vec3::filledWith(antiBleed / 2);
     };
 
     // Load textures
@@ -148,6 +203,11 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
     // Voxelize mesh
     std::vector<TexturedTriangle> buffers[3];
     std::map<Vec3u, WeightedColor> colorBuffer;
+
+    const auto insertionFunction = colorStrategy == ColorStrategy::BLEND ? insertColor<ColorStrategy::BLEND>
+                                                                         : insertColor<ColorStrategy::MAX>;
+
+    usize triangleCount = 0;
 
     // Loop over shapes
     for (usize s = 0; s < shapes.size(); s++) {
@@ -178,6 +238,10 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
                     triangle.t[v] = Vec2{attrib.texcoords.data() + 2 * idx.texcoord_index};
                 }
                 else {
+                    // Even if this value will never be used, it's not good practice to leave it unitialized.
+                    // This could lead to accidental denormalized float operations which are expensive.
+                    // Remove this line if we ever create a special case for meshes with no UV coordinates.
+                    triangle.t[v] = {};
                     hasTexCoords = false;
                 }
             }
@@ -203,13 +267,15 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile, usize res
                 triangle.type = TriangleType::UNTEXTURED;
             }
 
+            ++triangleCount;
             voxelize(triangle, buffers, colorBuffer);
             for (auto &[pos, weightedColor] : colorBuffer) {
-                insertColor(voxels, pos, weightedColor, colorStrategy);
+                insertionFunction(voxels, pos, weightedColor);
             }
             colorBuffer.clear();
         }
     }
+    VXIO_LOG(INFO, "Voxelized " + stringify(triangleCount) + " triangles");
 
     return voxels;
 }
@@ -287,7 +353,9 @@ using svo_leaf_type = svo_type::leaf_type;
     std::unique_ptr<AbstractListWriter> writer{makeWriter(out, outFormat)};
     writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
 
-    if (requiresPalette(outFormat)) {
+    const bool usePalette = requiresPalette(outFormat);
+
+    if (usePalette) {
         Palette32 &palette = writer->palette();
         for (auto [pos, color] : map) {
             palette.insert(color.toColor32());
@@ -308,11 +376,16 @@ using svo_leaf_type = svo_type::leaf_type;
     };
 
     for (auto [pos, weightedColor] : map) {
-        Vec3i32 pos32 = pos.cast<i32>();
-        Color32 color32 = weightedColor.toColor32();
-        ++voxelCount;
+        Color32 color = weightedColor.toColor32();
+        VOXEL_BUFFER_32[voxelIndex].pos = pos.cast<i32>();
+        if (usePalette) {
+            VOXEL_BUFFER_32[voxelIndex].index = writer->palette().indexOf(color);
+        }
+        else {
+            VOXEL_BUFFER_32[voxelIndex].argb = color;
+        }
 
-        VOXEL_BUFFER_32[voxelIndex] = {pos32, {color32}};
+        ++voxelCount;
         if (++voxelIndex == VOXEL_BUFFER_32_SIZE) {
             if (not flushBuffer()) {
                 return 1;
@@ -368,8 +441,29 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
         return 1;
     }
 
-    // all the actual work is done in these two lines
+#ifdef OBJ2VOXEL_DUMP_STL
+    globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
+#endif
+
     std::map<Vec3u, WeightedColor> weightedVoxels = voxelize_obj(inFile, resolution, colorStrategy);
+
+#ifdef OBJ2VOXEL_DUMP_STL
+    u8 buffer[80]{};
+    std::optional<FileOutputStream> stlDump = FileOutputStream::open("/tmp/obj2voxel_debug.stl");
+    VXIO_DEBUG_ASSERT(stlDump.has_value());
+    stlDump->write(buffer, sizeof(buffer));
+    VXIO_DEBUG_ASSERT_EQ(globalDebugStl.size() % 50, 0);
+    stlDump->writeLittle<u32>(static_cast<u32>(globalDebugStl.size() / 50));
+
+    ByteArrayInputStream inStream{globalDebugStl};
+    do {
+        inStream.read(buffer, 50);
+        if (inStream.eof())
+            break;
+        stlDump->write(buffer, 50);
+    } while (true);
+    #endif
+
     VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
     bool success = convert_map_voxelio(weightedVoxels, resolution, *outType, *outStream);
 
@@ -393,8 +487,8 @@ int main(OBJ2VOXEL_MAIN_PARAMS)
 
     std::string inFile = OBJ2VOXEL_TEST_STRING(argv[1], "/tmp/obj2voxel/in.obj");
     std::string outFile = OBJ2VOXEL_TEST_STRING(argv[2], "/tmp/obj2voxel/out.qef");
-    std::string resolutionStr = OBJ2VOXEL_TEST_STRING(argv[3], "16");
+    std::string resolutionStr = OBJ2VOXEL_TEST_STRING(argv[3], "256");
     std::string colorStratStr = OBJ2VOXEL_TEST_STRING(argc >= 5 ? argv[4] : "max", "max");
 
-    obj2voxel::main_impl(std::move(inFile), std::move(outFile), std::move(resolutionStr), std::move(colorStratStr));
+    obj2voxels::main_impl(std::move(inFile), std::move(outFile), std::move(resolutionStr), std::move(colorStratStr));
 }
