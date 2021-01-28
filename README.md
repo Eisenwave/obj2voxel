@@ -45,3 +45,15 @@ obj2voxel in.obj out.qef 128 max
   
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
+
+## Approach
+
+In case you're curious how obj2voxel voxelizes models:
+1. Triangles are first transformed from model space to voxel grid space.
+2. Triangles are then subdivided into smaller triangles if their bounding boxes are large.
+   This reduces the number of wasted iterations in the next step.
+3. For every voxel in the bounding box of the triangle, the triangle is cut at the six bounding planes of the voxel.
+   If some portion of the subtriangle remains inside the voxel after all six cuts, the triangle is converted into a pair of weight and color.
+   Otherwise, the triangle does not interesect the voxel.
+   The weight is the area of the triangle and the color is the material color at the center of the triangle.
+4. Colors from multiple triangles are blended together using either `max` or `blend` modes.
