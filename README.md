@@ -1,5 +1,7 @@
 # obj2voxel
 
+![voxelized sword](sword_voxelized.png)
+
 **obj2voxel** is a command-line voxelizer for Wavefront OBJ files.
 It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OBJ files and [voxel-io](https://github.com/Eisenwave/voxel-io) for writing voxel models.
 
