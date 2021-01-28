@@ -257,7 +257,7 @@ struct VisualTriangle : public TexturedTriangle {
         case TriangleType::MATERIALLESS: return Vec3f::filledWith(1);
         case TriangleType::UNTEXTURED: return color;
         case TriangleType::TEXTURED: {
-            VXIO_ASSERT_NOTNULL(texture);
+            VXIO_DEBUG_ASSERT_NOTNULL(texture);
             return texture->get({uv.x(), 1 - uv.y()});
         }
         }
