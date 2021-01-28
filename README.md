@@ -1,6 +1,6 @@
 # obj2voxel
 
-![voxelized sword](sword_voxelized.png)
+![voxelized sword](img/sword_voxelized.png)
 
 **obj2voxel** is a command-line voxelizer for Wavefront OBJ files.
 It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OBJ files and [voxel-io](https://github.com/Eisenwave/voxel-io) for writing voxel models.
@@ -44,4 +44,4 @@ obj2voxel in.obj out.qef 128 max
   `blend` means that the different triangle sections will be blended together using their areas in the voxel as weights.
   
 A usual run of obj2voxel looks like this:
-![screenshot](terminal_screenshot.png)
+![screenshot](img/terminal_screenshot.png)
