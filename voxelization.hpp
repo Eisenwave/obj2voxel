@@ -50,46 +50,36 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
     return false;
 }
 
-// UTILITY FUNCTIONS ===================================================================================================
+using InsertionFunction = void (*)(std::map<Vec3u, WeightedColor> &, Vec3u, WeightedColor);
 
-/// Mixes two colors based on their weights.
-constexpr WeightedColor mix(const WeightedColor &lhs, const WeightedColor &rhs)
-{
-    float weightSum = lhs.weight + rhs.weight;
-    return {weightSum, (lhs.weight * lhs.color + rhs.weight * rhs.color) / weightSum};
-}
+/// Throwaway class which manages all necessary data structures for voxelization and simplifies the procedure from the
+/// caller's side to just using voxelize(triangle).
+///
+/// Before the Voxelizer can be used, a transform from model space must be initialized with initTransform(...);
+struct Voxelizer {
+    static constexpr real_type ANTI_BLEED = 0.5f;
 
-/// Chooses the color with the greater weight.
-constexpr const WeightedColor &max(const WeightedColor &lhs, const WeightedColor &rhs)
-{
-    return lhs.weight > rhs.weight ? lhs : rhs;
-}
+    std::map<std::string, Texture> textures;
+    std::map<Vec3u, WeightedColor> colorBuffer;
+    std::vector<TexturedTriangle> buffers[3]{};
+    std::map<Vec3u, WeightedColor> voxels;
+    Vec3 meshMin{}, meshMax{};
+    real_type scaleFactor = 1;
 
-/// Emplaces a color in a map at the given location or combines it with the already stored color.
-template <ColorStrategy STRATEGY>
-inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, WeightedColor color)
-{
-    auto [location, success] = map.emplace(pos, color);
-    if (not success) {
-        location->second = STRATEGY == ColorStrategy::MAX ? max(color, location->second) : mix(color, location->second);
-    }
-}
+    InsertionFunction insertionFunction;
+    usize triangleCount = 0;
 
-/**
- * @brief Voxelizes a triangle.
- *
- * Among the parameters is an array of three buffers.
- * This array must be notnull.
- * The contents of the buffers are cleared by the callee, this parameter is only used so that allocation of new vectors
- * can be avoided for each triangle.
- *
- * @param triangle the input triangle to be voxelized
- * @param buffers three buffers which are used for intermediate operations
- * @param out the output map of voxel locations to weighted colors
- */
-void voxelize(const VisualTriangle &triangle,
-              std::vector<TexturedTriangle> buffers[3],
-              std::map<Vec3u, WeightedColor> &out);
+    Voxelizer(ColorStrategy colorStrategy);
+
+    Voxelizer(const Voxelizer &&) = delete;
+    Voxelizer(Voxelizer &&) = delete;
+
+    void initTransform(Vec3 min, Vec3 max, unsigned resolution);
+
+    Vec3 transform(Vec3 v);
+
+    void voxelize(VisualTriangle triangle);
+};
 
 }  // namespace obj2voxels
 

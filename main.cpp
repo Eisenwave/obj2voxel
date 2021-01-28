@@ -40,6 +40,7 @@
 // IMPLEMENTATION ======================================================================================================
 
 namespace obj2voxels {
+namespace {
 
 using namespace voxelio;
 
@@ -141,13 +142,9 @@ Texture loadTexture(const std::string &name)
 }
 
 std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
-                                            const usize resolution,
+                                            const unsigned resolution,
                                             const ColorStrategy colorStrategy)
 {
-    constexpr real_type antiBleed = 0.5f;
-
-    std::map<Vec3u, WeightedColor> voxels;
-
     // Load obj model
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -158,37 +155,25 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
     }
     if (attrib.vertices.empty()) {
         VXIO_LOG(WARNING, "Model has no vertices, aborting and writing empty voxel model");
-        return voxels;
+        return {};
     }
     VXIO_LOG(INFO, "Loaded OBJ model with " + stringify(attrib.vertices.size() / 3) + " vertices");
 
     // Determine mesh to voxel space transform
+
     Vec3 meshMin, meshMax;
     findBoundaries(attrib.vertices, meshMin, meshMax);
-    const Vec3 meshSize = meshMax - meshMin;
-    const real_type scaleFactor = (real_type(resolution) - antiBleed) / max(meshSize[0], meshSize[1], meshSize[2]);
 
-    const auto transform = [meshMin, scaleFactor](Vec3 v) -> Vec3 {
-        return (v - meshMin) * scaleFactor + Vec3::filledWith(antiBleed / 2);
-    };
+    Voxelizer voxelizer{colorStrategy};
+    voxelizer.initTransform(meshMin, meshMax, resolution);
 
     // Load textures
-    std::map<std::string, Texture> textures;
     for (tinyobj::material_t &material : materials) {
         std::string name = material.diffuse_texname;
         Texture tex = loadTexture(name);
-        textures.emplace(std::move(name), std::move(tex));
+        voxelizer.textures.emplace(std::move(name), std::move(tex));
     }
-    VXIO_LOG(INFO, "Loaded all diffuse textures (" + stringifyDec(textures.size()) + ")")
-
-    // Voxelize mesh
-    std::vector<TexturedTriangle> buffers[3];
-    std::map<Vec3u, WeightedColor> colorBuffer;
-
-    const auto insertionFunction =
-        colorStrategy == ColorStrategy::BLEND ? insertColor<ColorStrategy::BLEND> : insertColor<ColorStrategy::MAX>;
-
-    usize triangleCount = 0;
+    VXIO_LOG(INFO, "Loaded all diffuse textures (" + stringifyDec(voxelizer.textures.size()) + ")");
 
     // Loop over shapes
     for (usize s = 0; s < shapes.size(); s++) {
@@ -213,7 +198,6 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
                 }
                 Vec3 &vertex = triangle.v[v];
                 vertex = Vec3{attrib.vertices.data() + 3 * idx.vertex_index};
-                vertex = transform(triangle.v[v]);
 
                 if (idx.texcoord_index >= 0) {
                     triangle.t[v] = Vec2{attrib.texcoords.data() + 2 * idx.texcoord_index};
@@ -234,8 +218,8 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
             }
             else if (hasTexCoords) {
                 const std::string &textureName = materials[static_cast<usize>(materialIndex)].diffuse_texname;
-                auto location = textures.find(textureName);
-                if (location == textures.end()) {
+                auto location = voxelizer.textures.find(textureName);
+                if (location == voxelizer.textures.end()) {
                     VXIO_LOG(ERROR, "Face has invalid texture name \"" + textureName + '"');
                     std::exit(1);
                 }
@@ -248,17 +232,12 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
                 triangle.type = TriangleType::UNTEXTURED;
             }
 
-            ++triangleCount;
-            voxelize(triangle, buffers, colorBuffer);
-            for (auto &[pos, weightedColor] : colorBuffer) {
-                insertionFunction(voxels, pos, weightedColor);
-            }
-            colorBuffer.clear();
+            voxelizer.voxelize(triangle);
         }
     }
-    VXIO_LOG(INFO, "Voxelized " + stringify(triangleCount) + " triangles");
+    VXIO_LOG(INFO, "Voxelized " + stringify(voxelizer.triangleCount) + " triangles");
 
-    return voxels;
+    return std::move(voxelizer.voxels);
 }
 
 constexpr usize VOXEL_BUFFER_BYTE_SIZE = 8192;
@@ -358,7 +337,7 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
         return 1;
     }
 
-    usize resolution;
+    unsigned resolution;
     if (not voxelio::parseDec(resolutionStr, resolution)) {
         VXIO_LOG(ERROR, resolutionStr + " is not a valid resolution");
         return 1;
@@ -399,6 +378,7 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
     return not success;
 }
 
+}  // namespace
 }  // namespace obj2voxels
 
 int main(OBJ2VOXEL_MAIN_PARAMS)
@@ -416,7 +396,7 @@ int main(OBJ2VOXEL_MAIN_PARAMS)
 
     std::string inFile = OBJ2VOXEL_TEST_STRING(argv[1], "/tmp/obj2voxel/in.obj");
     std::string outFile = OBJ2VOXEL_TEST_STRING(argv[2], "/tmp/obj2voxel/out.qef");
-    std::string resolutionStr = OBJ2VOXEL_TEST_STRING(argv[3], "256");
+    std::string resolutionStr = OBJ2VOXEL_TEST_STRING(argv[3], "1024");
     std::string colorStratStr = OBJ2VOXEL_TEST_STRING(argc >= 5 ? argv[4] : "max", "max");
 
     obj2voxels::main_impl(std::move(inFile), std::move(outFile), std::move(resolutionStr), std::move(colorStratStr));

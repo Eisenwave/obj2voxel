@@ -10,6 +10,8 @@ void (*globalTriangleDebugCallback)(const Triangle &triangle) = [](auto) {};
 
 namespace {
 
+// UTILITY & CONSTANTS =================================================================================================
+
 constexpr bool DISABLE_PLANE_DISTANCE_TEST = false;
 constexpr real_type EPSILON = real_type(1) / (1 << 16);
 
@@ -23,11 +25,63 @@ constexpr bool eq(real_type x, unsigned plane)
     return isZero(x - real_type(plane));
 }
 
+/// Mixes two colors based on their weights.
+constexpr WeightedColor mix(const WeightedColor &lhs, const WeightedColor &rhs)
+{
+    float weightSum = lhs.weight + rhs.weight;
+    return {weightSum, (lhs.weight * lhs.color + rhs.weight * rhs.color) / weightSum};
+}
+
+/// Chooses the color with the greater weight.
+constexpr const WeightedColor &max(const WeightedColor &lhs, const WeightedColor &rhs)
+{
+    return lhs.weight > rhs.weight ? lhs : rhs;
+}
+
 constexpr real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, unsigned axis, unsigned plane)
 {
     real_type d = -dir[axis];
     return isZero(d) ? 0 : (org[axis] - real_type(plane)) / d;
 }
+
+/// Returns true if two floating point numbers are exactly equal without warnings (-Wfloat-equal).
+template <typename Float>
+constexpr bool eqExactly(Float a, Float b)
+{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wfloat-equal"
+    return a == b;
+#pragma clang diagnostic pop
+}
+
+/**
+ * @brief Returns the signed distance of a point and a plane.
+ * @param p the point
+ * @param org any point on the plane
+ * @param normal the normalized normal of the plane
+ * @return the signed distance of the point and the plane
+ */
+constexpr real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal)
+{
+    return dot(normal, p - org);
+}
+
+/// Emplaces a color in a map at the given location or combines it with the already stored color.
+template <ColorStrategy STRATEGY>
+inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, WeightedColor color)
+{
+    auto [location, success] = map.emplace(pos, color);
+    if (not success) {
+        location->second = STRATEGY == ColorStrategy::MAX ? max(color, location->second) : mix(color, location->second);
+    }
+}
+
+constexpr InsertionFunction insertionFunctionOf(ColorStrategy colorStrategy)
+{
+    return colorStrategy == ColorStrategy::BLEND ? insertColor<ColorStrategy::BLEND> : insertColor<ColorStrategy::MAX>;
+}
+
+// TRIANGLE SPLITTING ==================================================================================================
 
 enum class DiscardMode {
     /// No triangles are discarded, they are merely sorted into outLo and outHi. This is the default.
@@ -148,8 +202,8 @@ void splitTriangle(const unsigned axis,
         const Vec3 nonPlanarEdge = nonPlanarVertices[1] - nonPlanarVertices[0];
 
         const real_type intersection = intersect_ray_axisPlane(nonPlanarVertices[0], nonPlanarEdge, axis, plane);
-        const Vec3 geoIntersection = mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
-        const Vec2 texIntersection = mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
+        const Vec3 geoIntersection = obj2voxels::mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
+        const Vec2 texIntersection = obj2voxels::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
 
         const TexturedTriangle triangles[2] {
             {
@@ -210,12 +264,12 @@ void splitTriangle(const unsigned axis,
         };
 
         const Vec3 geoIsectPoints[2] {
-            mix(isolatedVertex, otherVertices[0], intersections[0]),
-            mix(isolatedVertex, otherVertices[1], intersections[1])
+            obj2voxels::mix(isolatedVertex, otherVertices[0], intersections[0]),
+            obj2voxels::mix(isolatedVertex, otherVertices[1], intersections[1])
         };
         const Vec2 texIsectPoints[2] {
-            mix(isolatedTexture, otherTextures[0], intersections[0]),
-            mix(isolatedTexture, otherTextures[1], intersections[1])
+            obj2voxels::mix(isolatedTexture, otherTextures[0], intersections[0]),
+            obj2voxels::mix(isolatedTexture, otherTextures[1], intersections[1])
         };
 
         // Construct the isolated triangle from intersection points.
@@ -299,6 +353,8 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
     }
 }
 
+// VOXELIZATION ========================================================================================================
+
 [[nodiscard]] WeightedColor voxelizeVoxel(const VisualTriangle &inputTriangle,
                                           Vec3u pos,
                                           std::vector<TexturedTriangle> *preSplitBuffer,
@@ -340,27 +396,6 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 
     postSplitBuffer->clear();
     return result;
-}
-
-template <typename Float>
-constexpr bool eqExactly(Float a, Float b)
-{
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wfloat-equal"
-    return a == b;
-#pragma clang diagnostic pop
-}
-
-/**
- * @brief Returns the signed distance of a point and a plane.
- * @param p the point
- * @param org any point on the plane
- * @param normal the normalized normal of the plane
- * @return the signed distance of the point and the plane
- */
-real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal)
-{
-    return dot(normal, p - org);
 }
 
 void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
@@ -406,11 +441,21 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
     }
 }
 
-}  // namespace
-
-void voxelize(const VisualTriangle &inputTriangle,
-              std::vector<TexturedTriangle> buffers[3],
-              std::map<Vec3u, WeightedColor> &out)
+/**
+ * @brief Voxelizes a triangle.
+ *
+ * Among the parameters is an array of three buffers.
+ * This array must be notnull.
+ * The contents of the buffers are cleared by the callee, this parameter is only used so that allocation of new vectors
+ * can be avoided for each triangle.
+ *
+ * @param triangle the input triangle to be voxelized
+ * @param buffers three buffers which are used for intermediate operations
+ * @param out the output map of voxel locations to weighted colors
+ */
+void voxelizeTriangle(VisualTriangle inputTriangle,
+                      std::vector<TexturedTriangle> buffers[3],
+                      std::map<Vec3u, WeightedColor> &out)
 {
     VXIO_DEBUG_ASSERT_NOTNULL(buffers);
     for (size_t i = 0; i < 3; ++i) {
@@ -431,6 +476,42 @@ void voxelize(const VisualTriangle &inputTriangle,
     for (TexturedTriangle subTriangle : buffers[0]) {
         voxelizeSubTriangle(inputTriangle, subTriangle, buffers + 1, buffers + 2, out);
     }
+}
+
+}  // namespace
+
+// VOXELIZER IMPLEMENTATION ============================================================================================
+
+Voxelizer::Voxelizer(ColorStrategy colorStrategy) : insertionFunction{insertionFunctionOf(colorStrategy)} {}
+
+void Voxelizer::initTransform(Vec3 min, Vec3 max, unsigned resolution)
+{
+    meshMin = min;
+    meshMax = max;
+
+    Vec3 meshSize = max - min;
+    scaleFactor = (real_type(resolution) - ANTI_BLEED) / obj2voxels::max(meshSize[0], meshSize[1], meshSize[2]);
+}
+
+Vec3 Voxelizer::transform(Vec3 v)
+{
+    return (v - meshMin) * scaleFactor + Vec3::filledWith(ANTI_BLEED / 2);
+}
+
+void Voxelizer::voxelize(VisualTriangle triangle)
+{
+    VXIO_ASSERT(colorBuffer.empty());
+
+    for (usize i = 0; i < 3; ++i) {
+        triangle.v[i] = transform(triangle.v[i]);
+    }
+
+    ++triangleCount;
+    obj2voxels::voxelizeTriangle(triangle, buffers, colorBuffer);
+    for (auto &[pos, weightedColor] : colorBuffer) {
+        insertionFunction(voxels, pos, weightedColor);
+    }
+    colorBuffer.clear();
 }
 
 }  // namespace obj2voxels
