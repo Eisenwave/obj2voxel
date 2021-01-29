@@ -15,7 +15,6 @@ It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OB
 
 **Note:** VL32 is a format used only by voxel-io.
 It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
-VL32 is bit-identical to the PLY files exported by obj2voxel when the first **322** header bytes are removed.
 
 The exported PLY files are point clouds consisting of vertices with integer coordinates:
 ```ply
@@ -31,6 +30,10 @@ property uchar green
 property uchar blue
 end_header
 ```
+VL32 is bit-identical to the PLY files exported by obj2voxel when the first **300** header bytes are removed.
+It is always exactly 300 bytes, the voxel-io library makes sure of that.
+voxel-io works with signed positions which is why `int` is used instead of `uint`, but the positions exported are always
+positive.
 
 ## Installation
 
