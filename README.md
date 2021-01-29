@@ -51,6 +51,12 @@ obj2voxel in.obj out.qef 128 max
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
 
+## Performance
+
+obj2voxel can produce up to one million voxels per second in optimal circumstances.
+Any resolution lower than 1000 should be voxelized almost instantly.
+The maximum memory consumption is about 64 bytes per voxel.
+
 ## Approach
 
 In case you're curious how obj2voxel voxelizes models:
