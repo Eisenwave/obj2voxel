@@ -11,10 +11,26 @@ It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OB
 - **STL (Stereolithography)** (Read)
 - **QEF** (Write)
 - **VL32** (Write)
-- *PLY* (Write, not yet implemented)
+- **PLY** (Write)
 
 **Note:** VL32 is a format used only by voxel-io.
 It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
+VL32 is bit-identical to the PLY files exported by obj2voxel when the first **322** header bytes are removed.
+
+The exported PLY files are point clouds consisting of vertices with integer coordinates:
+```ply
+ply
+format binary_big_endian 1.0
+element vertex ...
+property int x
+property int y
+property int z
+property uchar alpha
+property uchar red
+property uchar green
+property uchar blue
+end_header
+```
 
 ## Installation
 
