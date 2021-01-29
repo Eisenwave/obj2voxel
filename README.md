@@ -11,8 +11,9 @@ It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OB
 - **STL (Stereolithography)** (Read)
 - **QEF** (Write)
 - **VL32** (Write)
+- *PLY* (Write, not yet implemented)
 
-Note: VL32 is a format used only by voxel-io.
+**Note:** VL32 is a format used only by voxel-io.
 It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
 
 ## Installation
@@ -27,7 +28,7 @@ make         # optionally with -j <number of threads> option for multithreaded c
 
 ## Usage
 
-```
+```sh
 # Usage
 obj2voxel <in_file:path> <out_file:path> <resolution:uint> [color_strat:(max|blend)=max]
 
@@ -55,6 +56,7 @@ A usual run of obj2voxel looks like this:
 
 obj2voxel can produce up to one million voxels per second in optimal circumstances.
 Any resolution lower than 1000 should be voxelized almost instantly.
+
 The maximum memory consumption is about 64 bytes per voxel.
 
 ## Approach
