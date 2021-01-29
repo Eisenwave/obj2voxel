@@ -5,36 +5,6 @@
 **obj2voxel** is a command-line voxelizer for Wavefront OBJ files.
 It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OBJ files and [voxel-io](https://github.com/Eisenwave/voxel-io) for writing voxel models.
 
-## Supported Formats
-
-- **Wavefront OBJ** (Read)
-- **STL (Stereolithography)** (Read)
-- **QEF** (Write)
-- **VL32** (Write)
-- **PLY** (Write)
-
-**Note:** VL32 is a format used only by voxel-io.
-It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
-
-The exported PLY files are point clouds consisting of vertices with integer coordinates:
-```ply
-ply
-format binary_big_endian 1.0
-element vertex ...
-property int x
-property int y
-property int z
-property uchar alpha
-property uchar red
-property uchar green
-property uchar blue
-end_header
-```
-VL32 is bit-identical to the PLY files exported by obj2voxel when the first **300** header bytes are removed.
-It is always exactly 300 bytes, the voxel-io library makes sure of that.
-voxel-io works with signed positions which is why `int` is used instead of `uint`, but the positions exported are always
-positive.
-
 ## Installation
 
 Linux:
@@ -70,6 +40,53 @@ obj2voxel in.obj out.qef 128 max
   
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
+
+## Supported Formats
+
+- **Wavefront OBJ** (Read)
+- **STL (Stereolithography)** (Read)
+- **QEF** (Write)
+- **VL32** (Write)
+- **PLY** (Write)
+
+### PLY
+
+The exported PLY files are point clouds consisting of vertices with integer coordinates:
+```ply
+ply
+format binary_big_endian 1.0
+element vertex ...
+property int x
+property int y
+property int z
+property uchar alpha
+property uchar red
+property uchar green
+property uchar blue
+end_header
+```
+voxel-io works with signed positions which is why `int` is used instead of `uint`, but the positions exported are always
+positive.
+
+### VL32
+
+VL32 is a format used only by voxel-io.
+It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
+VL32 is bit-identical to the PLY files exported by obj2voxel when the first **300** header bytes are removed.
+It is always exactly 300 bytes, the voxel-io library makes sure of that.
+
+To read a VL32 file, implement the following pseudo-code:
+```cpp
+while (not end_of_file_reached()) {
+    int32_t x = read_big_endian_int32();
+    int32_t y = read_big_endian_int32();
+    int32_t z = read_big_endian_int32();
+    uint8_t a = read_byte();
+    uint8_t r = read_byte();
+    uint8_t g = read_byte();
+    uint8_t b = read_byte();
+}
+```
 
 ## Performance
 
