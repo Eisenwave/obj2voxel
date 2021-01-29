@@ -207,7 +207,9 @@ int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr,
         return 1;
     }
 
-    if (*outType != FileType::QUBICLE_EXCHANGE && *outType != FileType::VL32) {
+    static const std::set<FileType> supportedOut{
+        FileType::QUBICLE_EXCHANGE, FileType::VL32, FileType::STANFORD_TRIANGLE};
+    if (supportedOut.find(*outType) == supportedOut.end()) {
         VXIO_LOG(ERROR, "Detected output file type (" + std::string(nameOf(*outType)) + ") is not supported");
         return 1;
     }

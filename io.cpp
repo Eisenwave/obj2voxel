@@ -3,10 +3,12 @@
 // TODO consider not including all of voxelization because this is currently happening just for the triangle callback
 #include "voxelization.hpp"
 
-#include "voxelio/filetype.hpp"
+#include "voxelio/format/ply.hpp"
 #include "voxelio/format/png.hpp"
 #include "voxelio/format/qef.hpp"
 #include "voxelio/format/vl32.hpp"
+
+#include "voxelio/filetype.hpp"
 #include "voxelio/log.hpp"
 #include "voxelio/stream.hpp"
 #include "voxelio/stringmanip.hpp"
@@ -144,6 +146,7 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     switch (type) {
     case FileType::QUBICLE_EXCHANGE: return new qef::Writer{stream};
     case FileType::VL32: return new vl32::Writer{stream};
+    case FileType::STANFORD_TRIANGLE: return new ply::Writer{stream};
     default: VXIO_ASSERT_UNREACHABLE();
     }
 }
@@ -157,6 +160,7 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
 
     const bool usePalette = requiresPalette(outFormat);
+    VXIO_LOG(DEBUG, "Writing " + std::string(nameOf(outFormat)) + (usePalette ? " with" : " without") + " palette");
 
     if (usePalette) {
         Palette32 &palette = writer->palette();
@@ -196,13 +200,15 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
         }
     };
 
-    VXIO_LOG(INFO, "Flushing remaining " + stringify(voxelIndex) + " voxels ...");
+    VXIO_LOG(DEBUG, "Flushing remaining " + stringify(voxelIndex) + " voxels ...");
     VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
 
     bool finalSuccess = flushBuffer();
     if (not finalSuccess) {
         return 1;
     }
+
+    writer.reset();
 
     VXIO_LOG(INFO, "Done!");
     return 0;

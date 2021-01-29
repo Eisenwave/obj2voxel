@@ -18,7 +18,6 @@ else()
     add_definitions(-DVXIO_RELEASE)
 endif()
 
-add_subdirectory(voxelio)
 add_executable(obj2voxels
     main.cpp
     3rd_party/tinyobj.hpp
@@ -28,6 +27,7 @@ add_executable(obj2voxels
     io.cpp
     io.hpp)
 
+add_subdirectory(voxelio)
 target_link_libraries(obj2voxels voxelio)
 
 target_include_directories(obj2voxels PUBLIC voxelio/include)
