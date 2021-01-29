@@ -6,7 +6,7 @@
 
 namespace obj2voxels {
 
-void (*globalTriangleDebugCallback)(const Triangle &triangle) = [](auto) {};
+void (*globalTriangleDebugCallback)(Triangle) = [](auto) {};
 
 namespace {
 

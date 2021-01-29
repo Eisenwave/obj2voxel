@@ -14,18 +14,7 @@ using namespace voxelio;
 // SIMPLE STRUCTS AND TYPEDEFS =========================================================================================
 
 /// A function called on debug builds which can be used to dump triangles to an STL file and such.
-extern void (*globalTriangleDebugCallback)(const Triangle &triangle);
-
-/// A color and a weight.
-struct WeightedColor {
-    float weight;
-    Vec3f color;
-
-    constexpr Color32 toColor32() const
-    {
-        return Color32{color};
-    }
-};
+extern void (*globalTriangleDebugCallback)(Triangle);
 
 /// An enum which describes the strategy for coloring in voxels from triangles.
 enum class ColorStrategy {

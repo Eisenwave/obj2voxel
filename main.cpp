@@ -1,28 +1,26 @@
+#include "io.hpp"
 #include "voxelization.hpp"
 
-#include "voxelio/filetype.hpp"
-#include "voxelio/format/png.hpp"
-#include "voxelio/format/qef.hpp"
-#include "voxelio/format/vl32.hpp"
-#include "voxelio/parse.hpp"
 #include "voxelio/stream.hpp"
 #include "voxelio/stringmanip.hpp"
-#include "voxelio/voxelio.hpp"
+#include "voxelio/parse.hpp"
 
 #include <map>
 #include <memory>
 #include <set>
 #include <vector>
 
-// tinobj implementation must be included last because it is alos included by voxelization.hpp (but no implementation)
-#define TINYOBJLOADER_IMPLEMENTATION 1
-#include "3rd_party/tinyobj.hpp"
-
 // MACROS ==============================================================================================================
 
 // comment out when building
 //#define OBJ2VOXEL_TEST
+
+// comment out when building
 //#define OBJ2VOXEL_DUMP_STL
+
+// tinobj implementation must be included last because it is alos included by voxelization.hpp (but no implementation)
+#define TINYOBJLOADER_IMPLEMENTATION 1
+#include "3rd_party/tinyobj.hpp"
 
 #ifndef OBJ2VOXEL_TEST
 #define OBJ2VOXEL_MAIN_PARAMS int argc, char **argv
@@ -37,6 +35,7 @@
 #define OBJ2VOXEL_TEST_STRING(arg, def) arg
 #endif
 
+
 // IMPLEMENTATION ======================================================================================================
 
 namespace obj2voxels {
@@ -44,106 +43,9 @@ namespace {
 
 using namespace voxelio;
 
-#ifdef OBJ2VOXEL_DUMP_STL
-static ByteArrayOutputStream globalDebugStl;
-void writeVecAsBinary(OutputStream &stream, Vec3 v)
-{
-    stream.writeLittle<float>(v[0]);
-    stream.writeLittle<float>(v[1]);
-    stream.writeLittle<float>(v[2]);
-}
-
-void writeTriangleAsTextToDebugStl(const Triangle &triangle)
-{
-    Vec3 normal = triangle.normal();
-
-    globalDebugStl.writeString("facet normal ");
-    writeVecAsText(globalDebugStl, normal);
-    globalDebugStl.write('\n');
-    globalDebugStl.writeString("  outer loop\n");
-    for (usize i = 0; i < 3; ++i) {
-        globalDebugStl.writeString("    vertex ");
-        writeVecAsText(globalDebugStl, triangle.vertex(i));
-        globalDebugStl.write('\n');
-    }
-    globalDebugStl.writeString("  endloop\n");
-    globalDebugStl.writeString("endfacet\n");
-}
-
-void writeTriangleAsBinaryToDebugStl(const Triangle &triangle)
-{
-    Vec3 normal = triangle.normal();
-    normal /= length(normal);
-
-    writeVecAsBinary(globalDebugStl, normal);
-    writeVecAsBinary(globalDebugStl, triangle.vertex(0));
-    writeVecAsBinary(globalDebugStl, triangle.vertex(1));
-    writeVecAsBinary(globalDebugStl, triangle.vertex(2));
-    globalDebugStl.writeLittle<u16>(0);
-}
-#endif
-
-void findBoundaries(const std::vector<real_type> &points, Vec3 &outMin, Vec3 &outMax)
-{
-    Vec3 min = {points[0], points[1], points[2]};
-    Vec3 max = min;
-
-    for (size_t i = 0; i < points.size(); i += 3) {
-        Vec3 p{points.data() + i};
-        min = obj2voxels::min(min, p);
-        max = obj2voxels::max(max, p);
-    }
-
-    outMin = min;
-    outMax = max;
-}
-
-bool loadObj(const std::string &inFile,
-             tinyobj::attrib_t &attrib,
-             std::vector<tinyobj::shape_t> &shapes,
-             std::vector<tinyobj::material_t> &materials)
-{
-    std::string warn;
-    std::string err;
-
-    bool tinyobjSuccess = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, inFile.c_str());
-    trim(warn);
-    trim(err);
-
-    if (not warn.empty()) {
-        std::vector<std::string> warnings = splitAtDelimiter(warn, '\n');
-        for (const std::string &warning : warnings) {
-            VXIO_LOG(WARNING, "TinyOBJ: " + warning);
-        }
-    }
-    if (not err.empty()) {
-        VXIO_LOG(ERROR, "TinyOBJ: " + err);
-    }
-
-    return tinyobjSuccess;
-}
-
-Texture loadTexture(const std::string &name)
-{
-    std::optional<FileInputStream> stream = FileInputStream::open(name);
-    if (not stream.has_value()) {
-        VXIO_LOG(ERROR, "Failed to open texture file \"" + name + '\"');
-        std::exit(1);
-    }
-
-    std::optional<Image> image = voxelio::png::decode(*stream, 4);
-    if (not stream.has_value()) {
-        VXIO_LOG(ERROR, "Failed to decode texture file \"" + name + '"');
-        std::exit(1);
-    }
-
-    VXIO_LOG(INFO, "Loaded texture \"" + name + "\"");
-    return std::move(*image);
-}
-
-std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
-                                            const unsigned resolution,
-                                            const ColorStrategy colorStrategy)
+std::map<Vec3u, WeightedColor> voxelizeObj(const std::string &inFile,
+                                           const unsigned resolution,
+                                           const ColorStrategy colorStrategy)
 {
     // Load obj model
     tinyobj::attrib_t attrib;
@@ -240,81 +142,45 @@ std::map<Vec3u, WeightedColor> voxelize_obj(const std::string &inFile,
     return std::move(voxelizer.voxels);
 }
 
-constexpr usize VOXEL_BUFFER_BYTE_SIZE = 8192;
-constexpr usize VOXEL_BUFFER_32_SIZE = VOXEL_BUFFER_BYTE_SIZE / sizeof(Voxel32);
-
-static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
-
-AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
+std::map<Vec3u, WeightedColor> voxelizeStl(const std::string &inFile,
+                                           const unsigned resolution,
+                                           const ColorStrategy colorStrategy)
 {
-    switch (type) {
-    case FileType::QUBICLE_EXCHANGE: return new qef::Writer{stream};
-    case FileType::VL32: return new vl32::Writer{stream};
-    default: VXIO_ASSERT_UNREACHABLE();
+    std::vector<f32> stl = loadStl(inFile);
+
+    VXIO_LOG(INFO, "Loaded STL model with " + stringify(stl.size() / 3) + " vertices");
+
+    Voxelizer voxelizer{colorStrategy};
+
+    {
+        Vec3 meshMin, meshMax;
+        findBoundaries(stl, meshMin, meshMax);
+        voxelizer.initTransform(meshMin, meshMax, resolution);
     }
+
+    f32* data = stl.data();
+
+    VXIO_ASSERT(stl.size() % 9 == 0);
+    for (usize i = 0; i < stl.size(); i += 9) {
+        VisualTriangle triangle;
+
+        for (usize i = 0; i < 3; ++i) {
+            triangle.v[i] = Vec3f{data}.cast<real_type>();
+            data += 3;
+            triangle.t[i] = {};
+        }
+
+        triangle.type = TriangleType::MATERIALLESS;
+
+        voxelizer.voxelize(std::move(triangle));
+    }
+
+    VXIO_LOG(INFO, "Voxelized " + stringify(voxelizer.triangleCount) + " triangles");
+
+    return std::move(voxelizer.voxels);
 }
 
-[[nodiscard]] int convert_map_voxelio(std::map<Vec3u, WeightedColor> &map,
-                                      usize resolution,
-                                      FileType outFormat,
-                                      FileOutputStream &out)
-{
-    std::unique_ptr<AbstractListWriter> writer{makeWriter(out, outFormat)};
-    writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
-
-    const bool usePalette = requiresPalette(outFormat);
-
-    if (usePalette) {
-        Palette32 &palette = writer->palette();
-        for (auto [pos, color] : map) {
-            palette.insert(color.toColor32());
-        }
-    }
-
-    usize voxelCount = 0;
-    usize voxelIndex = 0;
-
-    const auto flushBuffer = [&writer, &voxelIndex]() -> bool {
-        voxelio::ResultCode writeResult = writer->write(VOXEL_BUFFER_32, voxelIndex);
-        if (not voxelio::isGood(writeResult)) {
-            VXIO_LOG(ERROR, "Flush/Write error: " + informativeNameOf(writeResult));
-            return false;
-        }
-        voxelIndex = 0;
-        return true;
-    };
-
-    for (auto [pos, weightedColor] : map) {
-        Color32 color = weightedColor.toColor32();
-        VOXEL_BUFFER_32[voxelIndex].pos = pos.cast<i32>();
-        if (usePalette) {
-            VOXEL_BUFFER_32[voxelIndex].index = writer->palette().indexOf(color);
-        }
-        else {
-            VOXEL_BUFFER_32[voxelIndex].argb = color;
-        }
-
-        ++voxelCount;
-        if (++voxelIndex == VOXEL_BUFFER_32_SIZE) {
-            if (not flushBuffer()) {
-                return 1;
-            }
-        }
-    };
-
-    VXIO_LOG(INFO, "Flushing remaining " + stringify(voxelIndex) + " voxels ...");
-    VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
-
-    bool finalSuccess = flushBuffer();
-    if (not finalSuccess) {
-        return 1;
-    }
-
-    VXIO_LOG(INFO, "Done!");
-    return 0;
-}
-
-int main_impl(std::string inFile, std::string outFile, std::string resolutionStr, std::string colorStratStr)
+int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr, std::string colorStratStr)
 {
     VXIO_LOG(INFO,
              "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + resolutionStr + " with strategy " +
@@ -322,6 +188,17 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
 
     if (inFile.empty()) {
         VXIO_LOG(ERROR, "Input file path must not be empty");
+        return 1;
+    }
+
+    std::optional<FileType> inType = detectFileType(inFile);
+    if (not inType.has_value()) {
+        VXIO_LOG(WARNING, "Can't detect file type of \"" + inFile + "\", assuming Wavefront OBJ");
+        inType = FileType::WAVEFRONT_OBJ;
+    }
+
+    if (*inType != FileType::WAVEFRONT_OBJ && *inType != FileType::STEREOLITHOGRAPHY) {
+        VXIO_LOG(ERROR, "Detected input file type (" + std::string(nameOf(*inType)) + ") is not supported");
         return 1;
     }
 
@@ -354,26 +231,15 @@ int main_impl(std::string inFile, std::string outFile, std::string resolutionStr
     globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
 #endif
 
-    std::map<Vec3u, WeightedColor> weightedVoxels = voxelize_obj(inFile, resolution, colorStrategy);
+    std::map<Vec3u, WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ ? voxelizeObj(inFile, resolution, colorStrategy)
+                                                                                       : voxelizeStl(inFile, resolution, colorStrategy);
 
 #ifdef OBJ2VOXEL_DUMP_STL
-    u8 buffer[80]{};
-    std::optional<FileOutputStream> stlDump = FileOutputStream::open("/tmp/obj2voxel_debug.stl");
-    VXIO_DEBUG_ASSERT(stlDump.has_value());
-    stlDump->write(buffer, sizeof(buffer));
-    VXIO_DEBUG_ASSERT_EQ(globalDebugStl.size() % 50, 0);
-    stlDump->writeLittle<u32>(static_cast<u32>(globalDebugStl.size() / 50));
-
-    ByteArrayInputStream inStream{globalDebugStl};
-    do {
-        inStream.read(buffer, 50);
-        if (inStream.eof()) break;
-        stlDump->write(buffer, 50);
-    } while (true);
+    dumpDebugStl("/tmp/obj2voxel_debug.stl");
 #endif
 
     VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
-    bool success = convert_map_voxelio(weightedVoxels, resolution, *outType, *outStream);
+    bool success = writeMapWithVoxelio(weightedVoxels, resolution, *outType, *outStream);
 
     return not success;
 }
@@ -399,5 +265,5 @@ int main(OBJ2VOXEL_MAIN_PARAMS)
     std::string resolutionStr = OBJ2VOXEL_TEST_STRING(argv[3], "1024");
     std::string colorStratStr = OBJ2VOXEL_TEST_STRING(argc >= 5 ? argv[4] : "max", "max");
 
-    obj2voxels::main_impl(std::move(inFile), std::move(outFile), std::move(resolutionStr), std::move(colorStratStr));
+    obj2voxels::mainImpl(std::move(inFile), std::move(outFile), std::move(resolutionStr), std::move(colorStratStr));
 }

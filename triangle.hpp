@@ -25,6 +25,17 @@ enum class TriangleType {
     TEXTURED
 };
 
+/// A color and a weight.
+struct WeightedColor {
+    float weight;
+    Vec3f color;
+
+    constexpr Color32 toColor32() const
+    {
+        return Color32{color};
+    }
+};
+
 // UTILITY FUNCTIONS ===================================================================================================
 
 /**
