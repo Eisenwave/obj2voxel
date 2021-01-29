@@ -8,11 +8,12 @@ It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OB
 ## Supported Formats
 
 - **Wavefront OBJ** (Read)
+- **STL (Stereolithography)** (Read)
 - **QEF** (Write)
 - **VL32** (Write)
 
 Note: VL32 is a format used only by voxel-io.
-It's simply an array of (x,y,z,argb) 32-bit big-endian integers.
+It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
 
 ## Installation
 
@@ -36,8 +37,12 @@ obj2voxel in.obj out.qef 128 max
 
 **Explanation:** obj2voxel takes only positonal arguments:
 
-- `in_file` is the relative or absolute path to the input file
-- `out_file` is the relative or absolue path to the output file. Depending on the extension `qef` or `vl32` a different output format is chosen.
+- `in_file` is the relative or absolute path to the input file.
+  Depending on the extension `.stl` or `.obj` a different input format is chosen.
+  If the file type can't be detected, the default is Wavefront OBJ.
+- `out_file` is the relative or absolue path to the output file.
+  Depending on the extension `.qef` or `.vl32` a different output format is chosen.
+  There is no default so obj2voxel exits if it can't be chosen.
 - `resolution` is the maximum voxel grid resolution on any axis.
 - `color_strat` is a coloring strategy for when multiple triangles occupy one voxel.
   `max` means that the greatest triangle section is chosen for coloring.

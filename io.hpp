@@ -6,9 +6,9 @@
 #include "voxelio/filetype.hpp"
 #include "voxelio/streamfwd.hpp"
 
+#include <map>
 #include <optional>
 #include <vector>
-#include <map>
 
 namespace obj2voxels {
 
@@ -59,6 +59,6 @@ Texture loadTexture(const std::string &name);
                                       FileType outFormat,
                                       FileOutputStream &out);
 
-}
+}  // namespace obj2voxels
 
-#endif // IO_HPP
+#endif  // IO_HPP

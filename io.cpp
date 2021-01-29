@@ -3,14 +3,14 @@
 // TODO consider not including all of voxelization because this is currently happening just for the triangle callback
 #include "voxelization.hpp"
 
-#include "voxelio/stringmanip.hpp"
-#include "voxelio/log.hpp"
-#include "voxelio/stream.hpp"
+#include "voxelio/filetype.hpp"
 #include "voxelio/format/png.hpp"
 #include "voxelio/format/qef.hpp"
 #include "voxelio/format/vl32.hpp"
+#include "voxelio/log.hpp"
+#include "voxelio/stream.hpp"
+#include "voxelio/stringmanip.hpp"
 #include "voxelio/voxelio.hpp"
-#include "voxelio/filetype.hpp"
 
 namespace obj2voxels {
 
@@ -81,7 +81,7 @@ std::vector<f32> loadStl(const std::string &inFile)
     }
 
     char header[80];
-    usize headerSize = stream->read(reinterpret_cast<u8*>(header), sizeof(header));
+    usize headerSize = stream->read(reinterpret_cast<u8 *>(header), sizeof(header));
     if (headerSize != 80) {
         VXIO_LOG(ERROR, "Binary STL file must start with a header of 80 characters");
         std::exit(1);
@@ -208,4 +208,4 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     return 0;
 }
 
-}
+}  // namespace obj2voxels

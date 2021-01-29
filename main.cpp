@@ -1,9 +1,9 @@
 #include "io.hpp"
 #include "voxelization.hpp"
 
+#include "voxelio/parse.hpp"
 #include "voxelio/stream.hpp"
 #include "voxelio/stringmanip.hpp"
-#include "voxelio/parse.hpp"
 
 #include <map>
 #include <memory>
@@ -34,7 +34,6 @@
 #else
 #define OBJ2VOXEL_TEST_STRING(arg, def) arg
 #endif
-
 
 // IMPLEMENTATION ======================================================================================================
 
@@ -158,7 +157,7 @@ std::map<Vec3u, WeightedColor> voxelizeStl(const std::string &inFile,
         voxelizer.initTransform(meshMin, meshMax, resolution);
     }
 
-    f32* data = stl.data();
+    f32 *data = stl.data();
 
     VXIO_ASSERT(stl.size() % 9 == 0);
     for (usize i = 0; i < stl.size(); i += 9) {
@@ -204,7 +203,12 @@ int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr,
 
     std::optional<FileType> outType = detectFileType(outFile);
     if (not outType.has_value()) {
-        VXIO_LOG(ERROR, "Can't detect file type of \"" + inFile + "\"");
+        VXIO_LOG(ERROR, "Can't detect file type of \"" + outFile + "\"");
+        return 1;
+    }
+
+    if (*outType != FileType::QUBICLE_EXCHANGE && *outType != FileType::VL32) {
+        VXIO_LOG(ERROR, "Detected output file type (" + std::string(nameOf(*outType)) + ") is not supported");
         return 1;
     }
 
@@ -231,8 +235,9 @@ int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr,
     globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
 #endif
 
-    std::map<Vec3u, WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ ? voxelizeObj(inFile, resolution, colorStrategy)
-                                                                                       : voxelizeStl(inFile, resolution, colorStrategy);
+    std::map<Vec3u, WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ
+                                                        ? voxelizeObj(inFile, resolution, colorStrategy)
+                                                        : voxelizeStl(inFile, resolution, colorStrategy);
 
 #ifdef OBJ2VOXEL_DUMP_STL
     dumpDebugStl("/tmp/obj2voxel_debug.stl");
