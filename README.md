@@ -65,6 +65,7 @@ voxel.
 Supersampling can also improve color accuracy by voxelizing at a higher resolution and blending multiple voxels.
 In this comparison, the right cow is supersampled:
 ![regular vs 2x supersampling](img/supersampling_spot.png)
+
 Supersampling will usually produce slightly more voxels.
   
 ## Supported Formats
