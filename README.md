@@ -18,11 +18,11 @@ make         # optionally with -j <number of threads> option for multithreaded c
 ## Usage
 
 ```sh
-# Usage (the -s option is optional)
-obj2voxel input_file output_file -r <resolution:uint> -s <color_strategy:(max|blend)>
+# Usage (the -t and -s options is optional)
+obj2voxel input_file output_file -t <texture_file> -r <resolution:uint> -s <color_strategy:(max|blend)>
 
 # Example
-obj2voxel in.obj out.qef -r 128 -s max
+obj2voxel in.obj out.qef -t texture.png -r 128 -s max
 ```
 
 **Explanation:** obj2voxel takes only positonal arguments:
@@ -33,14 +33,34 @@ obj2voxel in.obj out.qef -r 128 -s max
 - `output_file` is the relative or absolue path to the output file.
   Depending on the extension `.ply`, `.qef` or `.vl32` a different output format is chosen.
   There is no default so obj2voxel exits if it can't be chosen.
+- `-t` is the optional path to a texture file.
+  This texture is used for triangles with UV coordinates but no materials.
 - `-r` is the maximum voxel grid resolution on any axis.
 - `-s` is a coloring strategy for when multiple triangles occupy one voxel.
-  `max` means that the greatest triangle section is chosen for coloring.
-  `blend` means that the different triangle sections will be blended together using their areas in the voxel as weights.
   
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
 
+### Max vs Blend Strategies
+
+There are two strategies for combining colors in a voxelized model.
+When voxelizing, weighted colors are produced where the weights are the areas of the triangle sections inside of a
+voxel.
+
+- `max` means that the greatest triangle section is chosen for the color of a voxel.
+  Max produces sharper colors and doesn't introduce any colors that weren't in the original mesh.
+  However, at low resolutions, it can look noisy and small details from the mesh might disappear.
+- `blend` means that triangle sections will be blended together using their weights.
+  Blend produces smoother colors and reproduces smaller details at least somewhat.
+  However, it introduces new colors and can make the model look blurry.
+  For example, blend would produce a magenta edge between a red and blue triangle which might be unwanted.
+
+**Example 1:** "Spot" model. `max` is left, `blend` is right.
+![blend vs max using Spot model](img/blend_vs_max_spot.png)
+
+**Example 2:** "Sword" model. `max` is bottom, `blend` is top.
+![blend vs max using Sword model](img/blend_vs_max_sword.png)
+  
 ## Supported Formats
 
 - **Wavefront OBJ** (Read)

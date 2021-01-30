@@ -2,10 +2,13 @@
 #define VOXELIZATION_HPP
 
 #include "triangle.hpp"
+#include "util.hpp"
 
 #include "voxelio/color.hpp"
 #include "voxelio/log.hpp"
 #include "voxelio/vec.hpp"
+
+#include <map>
 
 namespace obj2voxels {
 
@@ -54,8 +57,8 @@ struct Voxelizer {
     static constexpr real_type ANTI_BLEED = 0.5f;
 
     std::map<std::string, Texture> textures;
-    std::map<Vec3u, WeightedColor> colorBuffer;
     std::vector<TexturedTriangle> buffers[3]{};
+    std::map<Vec3u, WeightedUv> uvBuffer;
     std::map<Vec3u, WeightedColor> voxels;
     Vec3 meshMin{}, meshMax{};
     real_type scaleFactor = 1;

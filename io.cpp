@@ -165,7 +165,7 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     if (usePalette) {
         Palette32 &palette = writer->palette();
         for (auto [pos, color] : map) {
-            palette.insert(color.toColor32());
+            palette.insert(Color32{color.value});
         }
     }
 
@@ -183,7 +183,7 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     };
 
     for (auto [pos, weightedColor] : map) {
-        Color32 color = weightedColor.toColor32();
+        Color32 color = Color32{weightedColor.value};
         VOXEL_BUFFER_32[voxelIndex].pos = pos.cast<i32>();
         if (usePalette) {
             VOXEL_BUFFER_32[voxelIndex].index = writer->palette().indexOf(color);

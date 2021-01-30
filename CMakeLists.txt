@@ -23,6 +23,7 @@ add_executable(obj2voxels
     3rd_party/tinyobj.hpp
     3rd_party/args.hpp
     triangle.hpp
+    util.hpp
     voxelization.cpp
     voxelization.hpp
     io.cpp

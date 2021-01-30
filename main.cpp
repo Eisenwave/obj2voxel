@@ -37,6 +37,7 @@ namespace {
 using namespace voxelio;
 
 std::map<Vec3u, WeightedColor> voxelizeObj(const std::string &inFile,
+                                           const std::string &texture,
                                            const unsigned resolution,
                                            const ColorStrategy colorStrategy)
 {
@@ -63,12 +64,18 @@ std::map<Vec3u, WeightedColor> voxelizeObj(const std::string &inFile,
     voxelizer.initTransform(meshMin, meshMax, resolution);
 
     // Load textures
+    Texture *defaultTexture = nullptr;
+    if (not texture.empty()) {
+        auto [location, success] = voxelizer.textures.emplace("", loadTexture(texture));
+        VXIO_ASSERTM(success, "Multiple default textures?!");
+        defaultTexture = &location->second;
+    }
     for (tinyobj::material_t &material : materials) {
         std::string name = material.diffuse_texname;
         Texture tex = loadTexture(name);
         voxelizer.textures.emplace(std::move(name), std::move(tex));
     }
-    VXIO_LOG(INFO, "Loaded all diffuse textures (" + stringifyDec(voxelizer.textures.size()) + ")");
+    VXIO_LOG(INFO, "Loaded " + stringifyDec(voxelizer.textures.size()) + " textures");
 
     // Loop over shapes
     for (usize s = 0; s < shapes.size(); s++) {
@@ -109,7 +116,13 @@ std::map<Vec3u, WeightedColor> voxelizeObj(const std::string &inFile,
 
             int materialIndex = shape.mesh.material_ids[f];
             if (materialIndex < 0) {
-                triangle.type = TriangleType::MATERIALLESS;
+                if (hasTexCoords && defaultTexture != nullptr) {
+                    triangle.type = TriangleType::TEXTURED;
+                    triangle.texture = defaultTexture;
+                }
+                else {
+                    triangle.type = TriangleType::MATERIALLESS;
+                }
             }
             else if (hasTexCoords) {
                 const std::string &textureName = materials[static_cast<usize>(materialIndex)].diffuse_texname;
@@ -173,7 +186,8 @@ std::map<Vec3u, WeightedColor> voxelizeStl(const std::string &inFile,
     return std::move(voxelizer.voxels);
 }
 
-int mainImpl(std::string inFile, std::string outFile, unsigned resolution, ColorStrategy colorStrategy)
+int mainImpl(
+    std::string inFile, std::string outFile, std::string textureFile, unsigned resolution, ColorStrategy colorStrategy)
 {
     if constexpr (voxelio::build::DEBUG) {
         voxelio::logLevel = voxelio::LogLevel::DEBUG;
@@ -224,7 +238,7 @@ int mainImpl(std::string inFile, std::string outFile, unsigned resolution, Color
 #endif
 
     std::map<Vec3u, WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ
-                                                        ? voxelizeObj(inFile, resolution, colorStrategy)
+                                                        ? voxelizeObj(inFile, textureFile, resolution, colorStrategy)
                                                         : voxelizeStl(inFile, resolution, colorStrategy);
 
 #ifdef OBJ2VOXEL_DUMP_STL
@@ -245,8 +259,12 @@ constexpr const char *FOOTER = "Visit at https://github.com/eisenwave/obj2voxel"
 constexpr const char *HELP_DESCR = "Display this help menu.";
 constexpr const char *INPUT_DESCR = "First argument. Path to OBJ or STL input file.";
 constexpr const char *OUTPUT_DESCR = "Second argument. Path to QEF, PLY or VL32 output file.";
+constexpr const char *TEXTURE_DESCR = "Fallback texture path. Used when model has UV coordinates but textures can't "
+                                      "be found in the material library. (Default: none)";
 constexpr const char *RESOLUTION_DESCR = "Maximum voxel grid resolution on any axis. (Required)";
-constexpr const char *STRATEGY_DESCR = "Strategy for combining voxels of different triangles. (Default: max)";
+constexpr const char *STRATEGY_DESCR =
+    "Strategy for combining voxels of different triangles. "
+    "Blend gives smoother colors at triangle edges but might produce new and unwanted colors. (Default: max)";
 
 int main(int argc, char **argv)
 {
@@ -263,6 +281,7 @@ int main(int argc, char **argv)
     args::Group fgroup(parser, "File Options:");
     args::Positional<std::string> inFileArg(fgroup, "INPUT_FILE", INPUT_DESCR);
     args::Positional<std::string> outFileArg(fgroup, "OUTPUT_FILE", OUTPUT_DESCR);
+    args::ValueFlag<std::string> textureArg(fgroup, "texture", TEXTURE_DESCR, {'t'}, "");
 
     args::Group vgroup(parser, "Voxelization Options:");
     args::ValueFlag<unsigned> resolutionArg(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
@@ -280,5 +299,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    obj2voxels::mainImpl(inFileArg.Get(), outFileArg.Get(), resolutionArg.Get(), strategyArg.Get());
+    obj2voxels::mainImpl(std::move(inFileArg.Get()),
+                         std::move(outFileArg.Get()),
+                         std::move(textureArg.Get()),
+                         resolutionArg.Get(),
+                         strategyArg.Get());
 }

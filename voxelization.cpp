@@ -25,19 +25,6 @@ constexpr bool eq(real_type x, unsigned plane)
     return isZero(x - real_type(plane));
 }
 
-/// Mixes two colors based on their weights.
-constexpr WeightedColor mix(const WeightedColor &lhs, const WeightedColor &rhs)
-{
-    float weightSum = lhs.weight + rhs.weight;
-    return {weightSum, (lhs.weight * lhs.color + rhs.weight * rhs.color) / weightSum};
-}
-
-/// Chooses the color with the greater weight.
-constexpr const WeightedColor &max(const WeightedColor &lhs, const WeightedColor &rhs)
-{
-    return lhs.weight > rhs.weight ? lhs : rhs;
-}
-
 constexpr real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, unsigned axis, unsigned plane)
 {
     real_type d = -dir[axis];
@@ -66,9 +53,9 @@ constexpr real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal)
     return dot(normal, p - org);
 }
 
-/// Emplaces a color in a map at the given location or combines it with the already stored color.
-template <ColorStrategy STRATEGY>
-inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, WeightedColor color)
+/// Emplaces a weighted type in a map at the given location or combines it with the already value.
+template <ColorStrategy STRATEGY, typename T>
+inline void insertWeighted(std::map<Vec3u, Weighted<T>> &map, Vec3u pos, Weighted<T> color)
 {
     auto [location, success] = map.emplace(pos, color);
     if (not success) {
@@ -78,7 +65,8 @@ inline void insertColor(std::map<Vec3u, WeightedColor> &map, Vec3u pos, Weighted
 
 constexpr InsertionFunction insertionFunctionOf(ColorStrategy colorStrategy)
 {
-    return colorStrategy == ColorStrategy::BLEND ? insertColor<ColorStrategy::BLEND> : insertColor<ColorStrategy::MAX>;
+    return colorStrategy == ColorStrategy::BLEND ? insertWeighted<ColorStrategy::BLEND, Vec3>
+                                                 : insertWeighted<ColorStrategy::MAX, Vec3>;
 }
 
 // TRIANGLE SPLITTING ==================================================================================================
@@ -355,10 +343,10 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 
 // VOXELIZATION ========================================================================================================
 
-[[nodiscard]] WeightedColor voxelizeVoxel(const VisualTriangle &inputTriangle,
-                                          Vec3u pos,
-                                          std::vector<TexturedTriangle> *preSplitBuffer,
-                                          std::vector<TexturedTriangle> *postSplitBuffer)
+[[nodiscard]] WeightedUv voxelizeVoxel(const VisualTriangle &inputTriangle,
+                                       Vec3u pos,
+                                       std::vector<TexturedTriangle> *preSplitBuffer,
+                                       std::vector<TexturedTriangle> *postSplitBuffer)
 {
     for (unsigned hi = 0; hi < 2; ++hi) {
         const auto splittingFunction =
@@ -386,12 +374,12 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
     VXIO_DEBUG_ASSERT(preSplitBuffer->empty());
     VXIO_DEBUG_ASSERTM(not postSplitBuffer->empty(), "Function should have been returned from early otherwise");
 
-    WeightedColor result{};
+    WeightedUv result{};
     for (const TexturedTriangle t : *postSplitBuffer) {
-        const Vec3f color = inputTriangle.colorAt_f(t.textureCenter());
         const float weight = static_cast<float>(inputTriangle.area());
+        const Vec2 uv = t.textureCenter();
 
-        result = mix(result, {weight, color});
+        result = mix(result, {weight, uv});
     }
 
     postSplitBuffer->clear();
@@ -402,7 +390,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                          TexturedTriangle subTriangle,
                          std::vector<TexturedTriangle> *preSplitBuffer,
                          std::vector<TexturedTriangle> *postSplitBuffer,
-                         std::map<Vec3u, WeightedColor> &out)
+                         std::map<Vec3u, WeightedUv> &out)
 {
     // sqrt(3) = 1.73... with some leeway to account for imprecision
     constexpr real_type distanceLimit = 2;
@@ -431,10 +419,10 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                 VXIO_DEBUG_ASSERT(postSplitBuffer->empty());
 
                 preSplitBuffer->push_back(subTriangle);
-                WeightedColor color = voxelizeVoxel(inputTriangle, pos, preSplitBuffer, postSplitBuffer);
+                WeightedUv uv = voxelizeVoxel(inputTriangle, pos, preSplitBuffer, postSplitBuffer);
 
-                if (not eqExactly(color.weight, 0.f)) {
-                    insertColor<ColorStrategy::BLEND>(out, pos, color);
+                if (not eqExactly(uv.weight, 0.f)) {
+                    insertWeighted<ColorStrategy::BLEND>(out, pos, uv);
                 }
             }
         }
@@ -455,7 +443,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
  */
 void voxelizeTriangle(VisualTriangle inputTriangle,
                       std::vector<TexturedTriangle> buffers[3],
-                      std::map<Vec3u, WeightedColor> &out)
+                      std::map<Vec3u, WeightedUv> &out)
 {
     VXIO_DEBUG_ASSERT_NOTNULL(buffers);
     for (size_t i = 0; i < 3; ++i) {
@@ -500,18 +488,19 @@ Vec3 Voxelizer::transform(Vec3 v)
 
 void Voxelizer::voxelize(VisualTriangle triangle)
 {
-    VXIO_ASSERT(colorBuffer.empty());
+    VXIO_ASSERT(uvBuffer.empty());
 
     for (usize i = 0; i < 3; ++i) {
         triangle.v[i] = transform(triangle.v[i]);
     }
 
     ++triangleCount;
-    obj2voxels::voxelizeTriangle(triangle, buffers, colorBuffer);
-    for (auto &[pos, weightedColor] : colorBuffer) {
-        insertionFunction(voxels, pos, weightedColor);
+    obj2voxels::voxelizeTriangle(triangle, buffers, uvBuffer);
+    for (auto &[pos, weightedUv] : uvBuffer) {
+        Vec3f color = triangle.colorAt_f(weightedUv.value);
+        this->insertionFunction(voxels, pos, {weightedUv.weight, color});
     }
-    colorBuffer.clear();
+    uvBuffer.clear();
 }
 
 }  // namespace obj2voxels

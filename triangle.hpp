@@ -1,16 +1,14 @@
 #ifndef TRIANGLE_HPP
 #define TRIANGLE_HPP
 
+#include "util.hpp"
+
 #include "voxelio/image.hpp"
 #include "voxelio/vec.hpp"
-
-#include "3rd_party/tinyobj.hpp"
 
 namespace obj2voxels {
 
 using namespace voxelio;
-
-using real_type = tinyobj::real_t;
 
 using Vec2 = Vec<real_type, 2>;
 using Vec3 = Vec<real_type, 3>;
@@ -24,125 +22,6 @@ enum class TriangleType {
     /// For triangles with a texture.
     TEXTURED
 };
-
-/// A color and a weight.
-struct WeightedColor {
-    float weight;
-    Vec3f color;
-
-    constexpr Color32 toColor32() const
-    {
-        return Color32{color};
-    }
-};
-
-// UTILITY FUNCTIONS ===================================================================================================
-
-/**
- * @brief Applies a binary function to each component of two vectors and returns the result.
- */
-template <typename T, size_t N, const T &(*functor)(const T &, const T &)>
-constexpr Vec<T, N> applyForEach(Vec<T, N> a, Vec<T, N> b)
-{
-    Vec<T, N> result{};
-    for (usize i = 0; i < N; ++i) {
-        result[i] = functor(a[i], b[i]);
-    }
-    return result;
-}
-
-/// Returns the component-wise min.
-template <typename T, size_t N>
-constexpr Vec<T, N> min(Vec<T, N> a, Vec<T, N> b)
-{
-    return applyForEach<T, N, std::min<T>>(a, b);
-}
-
-/// Returns the component-wise min.
-template <typename T, size_t N>
-constexpr Vec<T, N> max(Vec<T, N> a, Vec<T, N> b)
-{
-    return applyForEach<T, N, std::max<T>>(a, b);
-}
-
-/// Three-parameter min. For Vec types, returns the component-wise minimum.
-template <typename T>
-constexpr T min(const T &a, const T &b, const T &c)
-{
-    if constexpr (voxelio::isVec<T>) {
-        return obj2voxels::min(a, obj2voxels::min(b, c));
-    }
-    else {
-        return std::min(a, std::min(b, c));
-    }
-}
-
-/// Three-parameter min. For Vec types, returns the component-wise maximum.
-template <typename T>
-constexpr T max(const T &a, const T &b, const T &c)
-{
-    if constexpr (voxelio::isVec<T>) {
-        return obj2voxels::max(a, obj2voxels::max(b, c));
-    }
-    else {
-        return std::max(a, std::max(b, c));
-    }
-}
-
-/// Computes the component-wise floor of the vector.
-template <typename T, size_t N>
-constexpr Vec<T, N> floor(Vec<T, N> v)
-{
-    Vec<T, N> result{};
-    for (size_t i = 0; i < N; ++i) {
-        result[i] = std::floor(v[i]);
-    }
-    return result;
-}
-
-/// Computes the component-wise ceil of the vector.
-template <typename T, size_t N>
-constexpr Vec<T, N> ceil(Vec<T, N> v)
-{
-    Vec<T, N> result{};
-    for (size_t i = 0; i < N; ++i) {
-        result[i] = std::ceil(v[i]);
-    }
-    return result;
-}
-
-/// Computes the component-wise abs of the vector.
-template <typename T, size_t N>
-constexpr Vec<T, N> abs(Vec<T, N> v)
-{
-    Vec<T, N> result{};
-    for (size_t i = 0; i < N; ++i) {
-        result[i] = std::abs(v[i]);
-    }
-    return result;
-}
-
-/// Computes the length or magnitude of the vector.
-template <typename T, size_t N>
-T length(Vec<T, N> v)
-{
-    T result = std::sqrt(dot<T, T, N>(v, v));
-    return result;
-}
-
-/// Divides a vector by its length.
-template <typename T, size_t N>
-constexpr Vec<T, N> normalize(Vec<T, N> v)
-{
-    return v / length(v);
-}
-
-/// Mixes or linearly interpolates two vectors.
-template <typename T, size_t N>
-constexpr Vec<T, N> mix(Vec<T, N> a, Vec<T, N> b, T t)
-{
-    return (1 - t) * a + t * b;
-}
 
 // TRIANGLES ===========================================================================================================
 
