@@ -18,23 +18,23 @@ make         # optionally with -j <number of threads> option for multithreaded c
 ## Usage
 
 ```sh
-# Usage
-obj2voxel <in_file:path> <out_file:path> <resolution:uint> [color_strat:(max|blend)=max]
+# Usage (the -s option is optional)
+obj2voxel input_file output_file -r <resolution:uint> -s <color_strategy:(max|blend)>
 
 # Example
-obj2voxel in.obj out.qef 128 max
+obj2voxel in.obj out.qef -r 128 -s max
 ```
 
 **Explanation:** obj2voxel takes only positonal arguments:
 
-- `in_file` is the relative or absolute path to the input file.
+- `input_file` is the relative or absolute path to the input file.
   Depending on the extension `.stl` or `.obj` a different input format is chosen.
   If the file type can't be detected, the default is Wavefront OBJ.
-- `out_file` is the relative or absolue path to the output file.
-  Depending on the extension `.qef` or `.vl32` a different output format is chosen.
+- `output_file` is the relative or absolue path to the output file.
+  Depending on the extension `.ply`, `.qef` or `.vl32` a different output format is chosen.
   There is no default so obj2voxel exits if it can't be chosen.
-- `resolution` is the maximum voxel grid resolution on any axis.
-- `color_strat` is a coloring strategy for when multiple triangles occupy one voxel.
+- `-r` is the maximum voxel grid resolution on any axis.
+- `-s` is a coloring strategy for when multiple triangles occupy one voxel.
   `max` means that the greatest triangle section is chosen for coloring.
   `blend` means that the different triangle sections will be blended together using their areas in the voxel as weights.
   
