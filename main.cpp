@@ -31,7 +31,7 @@
 
 // IMPLEMENTATION ======================================================================================================
 
-namespace obj2voxels {
+namespace obj2voxel {
 namespace {
 
 using namespace voxelio;
@@ -261,7 +261,7 @@ int mainImpl(std::string inFile,
 }
 
 }  // namespace
-}  // namespace obj2voxels
+}  // namespace obj2voxel
 
 constexpr const char *HEADER = "obj2voxel - OBJ and STL voxelizer";
 constexpr const char *FOOTER = "Visit at https://github.com/eisenwave/obj2voxel";
@@ -280,7 +280,7 @@ constexpr const char *SS_DESCR =
 
 int main(int argc, char **argv)
 {
-    using namespace obj2voxels;
+    using namespace obj2voxel;
 
     const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
                                                                      {"blend", ColorStrategy::BLEND}};
@@ -312,10 +312,10 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    obj2voxels::mainImpl(std::move(inFileArg.Get()),
-                         std::move(outFileArg.Get()),
-                         std::move(textureArg.Get()),
-                         resolutionArg.Get(),
-                         ssArg.Get(),
-                         strategyArg.Get());
+    obj2voxel::mainImpl(std::move(inFileArg.Get()),
+                        std::move(outFileArg.Get()),
+                        std::move(textureArg.Get()),
+                        resolutionArg.Get(),
+                        ssArg.Get(),
+                        strategyArg.Get());
 }

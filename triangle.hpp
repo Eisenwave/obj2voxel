@@ -6,7 +6,7 @@
 #include "voxelio/image.hpp"
 #include "voxelio/vec.hpp"
 
-namespace obj2voxels {
+namespace obj2voxel {
 
 using namespace voxelio;
 
@@ -58,26 +58,26 @@ struct Triangle {
     constexpr real_type min(usize i) const
     {
         VXIO_DEBUG_ASSERT_LT(i, 3);
-        return obj2voxels::min(v[0][i], v[1][i], v[2][i]);
+        return obj2voxel::min(v[0][i], v[1][i], v[2][i]);
     }
 
     /// Returns the minimum coordinate of this triangle on one axis.
     constexpr real_type max(usize i) const
     {
         VXIO_DEBUG_ASSERT_LT(i, 3);
-        return obj2voxels::max(v[0][i], v[1][i], v[2][i]);
+        return obj2voxel::max(v[0][i], v[1][i], v[2][i]);
     }
 
     /// Returns an inclusive minimum boundary.
     constexpr Vec3 min() const
     {
-        return obj2voxels::min(v[0], v[1], v[2]);
+        return obj2voxel::min(v[0], v[1], v[2]);
     }
 
     /// Returns an inclusive maximum boundary.
     constexpr Vec3 max() const
     {
-        return obj2voxels::max(v[0], v[1], v[2]);
+        return obj2voxel::max(v[0], v[1], v[2]);
     }
 
     /// Returns an inclusive minimum voxel boundary.
@@ -180,6 +180,6 @@ struct VisualTriangle : public TexturedTriangle {
     }
 };
 
-}  // namespace obj2voxels
+}  // namespace obj2voxel
 
 #endif  // TRIANGLE_HPP

@@ -4,7 +4,7 @@
 #include <set>
 #include <vector>
 
-namespace obj2voxels {
+namespace obj2voxel {
 
 void (*globalTriangleDebugCallback)(Triangle) = [](auto) {};
 
@@ -190,8 +190,8 @@ void splitTriangle(const unsigned axis,
         const Vec3 nonPlanarEdge = nonPlanarVertices[1] - nonPlanarVertices[0];
 
         const real_type intersection = intersect_ray_axisPlane(nonPlanarVertices[0], nonPlanarEdge, axis, plane);
-        const Vec3 geoIntersection = obj2voxels::mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
-        const Vec2 texIntersection = obj2voxels::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
+        const Vec3 geoIntersection = obj2voxel::mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
+        const Vec2 texIntersection = obj2voxel::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
 
         const TexturedTriangle triangles[2] {
             {
@@ -252,12 +252,12 @@ void splitTriangle(const unsigned axis,
         };
 
         const Vec3 geoIsectPoints[2] {
-            obj2voxels::mix(isolatedVertex, otherVertices[0], intersections[0]),
-            obj2voxels::mix(isolatedVertex, otherVertices[1], intersections[1])
+            obj2voxel::mix(isolatedVertex, otherVertices[0], intersections[0]),
+            obj2voxel::mix(isolatedVertex, otherVertices[1], intersections[1])
         };
         const Vec2 texIsectPoints[2] {
-            obj2voxels::mix(isolatedTexture, otherTextures[0], intersections[0]),
-            obj2voxels::mix(isolatedTexture, otherTextures[1], intersections[1])
+            obj2voxel::mix(isolatedTexture, otherTextures[0], intersections[0]),
+            obj2voxel::mix(isolatedTexture, otherTextures[1], intersections[1])
         };
 
         // Construct the isolated triangle from intersection points.
@@ -500,7 +500,7 @@ void Voxelizer::initTransform(Vec3 min, Vec3 max, unsigned resolution)
     meshMax = max;
 
     Vec3 meshSize = max - min;
-    scaleFactor = (real_type(resolution) - ANTI_BLEED) / obj2voxels::max(meshSize[0], meshSize[1], meshSize[2]);
+    scaleFactor = (real_type(resolution) - ANTI_BLEED) / obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
 }
 
 Vec3 Voxelizer::transform(Vec3 v)
@@ -517,7 +517,7 @@ void Voxelizer::voxelize(VisualTriangle triangle)
     }
 
     ++triangleCount;
-    obj2voxels::voxelizeTriangle(triangle, buffers, uvBuffer);
+    obj2voxel::voxelizeTriangle(triangle, buffers, uvBuffer);
     for (auto &[pos, weightedUv] : uvBuffer) {
         Vec3f color = triangle.colorAt_f(weightedUv.value);
         this->insertionFunction(voxels, pos, {weightedUv.weight, color});
@@ -525,4 +525,4 @@ void Voxelizer::voxelize(VisualTriangle triangle)
     uvBuffer.clear();
 }
 
-}  // namespace obj2voxels
+}  // namespace obj2voxel

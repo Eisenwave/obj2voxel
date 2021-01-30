@@ -9,7 +9,7 @@
 
 #include <map>
 
-namespace obj2voxels {
+namespace obj2voxel {
 
 using namespace voxelio;
 using real_type = tinyobj::real_t;
@@ -65,7 +65,7 @@ template <typename T>
 constexpr T min(const T &a, const T &b, const T &c)
 {
     if constexpr (voxelio::isVec<T>) {
-        return obj2voxels::min(a, obj2voxels::min(b, c));
+        return obj2voxel::min(a, obj2voxel::min(b, c));
     }
     else {
         return std::min(a, std::min(b, c));
@@ -77,7 +77,7 @@ template <typename T>
 constexpr T max(const T &a, const T &b, const T &c)
 {
     if constexpr (voxelio::isVec<T>) {
-        return obj2voxels::max(a, obj2voxels::max(b, c));
+        return obj2voxel::max(a, obj2voxel::max(b, c));
     }
     else {
         return std::max(a, std::max(b, c));
@@ -156,6 +156,6 @@ constexpr Weighted<T> max(const Weighted<T> &lhs, const Weighted<T> &rhs)
     return lhs.weight > rhs.weight ? lhs : rhs;
 }
 
-}  // namespace obj2voxels
+}  // namespace obj2voxel
 
 #endif  // WEIGHTED_HPP

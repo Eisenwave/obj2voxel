@@ -10,7 +10,7 @@
 #include <optional>
 #include <vector>
 
-namespace obj2voxels {
+namespace obj2voxel {
 
 /// Writes a triangle to the debug STL file.
 /// This file exists only in memory and dumpDebugStl(...) must be called to write it to disk.
@@ -27,8 +27,8 @@ void findBoundaries(const std::vector<Float> &points, Vec<Float, 3> &outMin, Vec
 
     for (size_t i = 0; i < points.size(); i += 3) {
         Vec<Float, 3> p{points.data() + i};
-        min = obj2voxels::min(min, p);
-        max = obj2voxels::max(max, p);
+        min = obj2voxel::min(min, p);
+        max = obj2voxel::max(max, p);
     }
 
     outMin = min;
@@ -59,6 +59,6 @@ Texture loadTexture(const std::string &name);
                                       FileType outFormat,
                                       FileOutputStream &out);
 
-}  // namespace obj2voxels
+}  // namespace obj2voxel
 
 #endif  // IO_HPP

@@ -10,7 +10,7 @@
 
 #include <map>
 
-namespace obj2voxels {
+namespace obj2voxel {
 
 using namespace voxelio;
 
@@ -90,6 +90,6 @@ struct Voxelizer {
     void voxelize(VisualTriangle triangle);
 };
 
-}  // namespace obj2voxels
+}  // namespace obj2voxel
 
 #endif  // VOXELIZATION_HPP

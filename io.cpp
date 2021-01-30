@@ -14,7 +14,7 @@
 #include "voxelio/stringmanip.hpp"
 #include "voxelio/voxelio.hpp"
 
-namespace obj2voxels {
+namespace obj2voxel {
 
 // INPUT ===============================================================================================================
 
@@ -214,4 +214,4 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     return 0;
 }
 
-}  // namespace obj2voxels
+}  // namespace obj2voxel
