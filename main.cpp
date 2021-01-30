@@ -1,10 +1,13 @@
 #include "io.hpp"
 #include "voxelization.hpp"
 
+#include "3rd_party/args.hpp"
+
 #include "voxelio/parse.hpp"
 #include "voxelio/stream.hpp"
 #include "voxelio/stringmanip.hpp"
 
+#include <iostream>
 #include <map>
 #include <memory>
 #include <set>
@@ -13,20 +16,11 @@
 // MACROS ==============================================================================================================
 
 // comment out when building
-//#define OBJ2VOXEL_TEST
-
-// comment out when building
 //#define OBJ2VOXEL_DUMP_STL
 
 // tinobj implementation must be included last because it is alos included by voxelization.hpp (but no implementation)
 #define TINYOBJLOADER_IMPLEMENTATION 1
 #include "3rd_party/tinyobj.hpp"
-
-#ifndef OBJ2VOXEL_TEST
-#define OBJ2VOXEL_MAIN_PARAMS int argc, char **argv
-#else
-#define OBJ2VOXEL_MAIN_PARAMS
-#endif
 
 // this macro helps us run the executable with hardcoded parameters without IDE help
 #ifdef OBJ2VOXEL_TEST
@@ -179,11 +173,16 @@ std::map<Vec3u, WeightedColor> voxelizeStl(const std::string &inFile,
     return std::move(voxelizer.voxels);
 }
 
-int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr, std::string colorStratStr)
+int mainImpl(std::string inFile, std::string outFile, unsigned resolution, ColorStrategy colorStrategy)
 {
+    if constexpr (voxelio::build::DEBUG) {
+        voxelio::logLevel = voxelio::LogLevel::DEBUG;
+        VXIO_LOG(DEBUG, "Running debug build");
+    }
+
     VXIO_LOG(INFO,
-             "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + resolutionStr + " with strategy " +
-                 colorStratStr);
+             "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringify(resolution) +
+                 " with strategy " + std::string(nameOf(colorStrategy)));
 
     if (inFile.empty()) {
         VXIO_LOG(ERROR, "Input file path must not be empty");
@@ -220,19 +219,6 @@ int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr,
         return 1;
     }
 
-    unsigned resolution;
-    if (not voxelio::parseDec(resolutionStr, resolution)) {
-        VXIO_LOG(ERROR, resolutionStr + " is not a valid resolution");
-        return 1;
-    }
-
-    ColorStrategy colorStrategy;
-    toUpperCase(colorStratStr);
-    if (not parseColorStrategy(colorStratStr, colorStrategy)) {
-        VXIO_LOG(ERROR, "Invalid color strategy \"" + colorStratStr + "\"");
-        return 1;
-    }
-
 #ifdef OBJ2VOXEL_DUMP_STL
     globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
 #endif
@@ -254,23 +240,45 @@ int mainImpl(std::string inFile, std::string outFile, std::string resolutionStr,
 }  // namespace
 }  // namespace obj2voxels
 
-int main(OBJ2VOXEL_MAIN_PARAMS)
+constexpr const char *HEADER = "obj2voxel - OBJ and STL voxelizer";
+constexpr const char *FOOTER = "Visit at https://github.com/eisenwave/obj2voxel";
+constexpr const char *HELP_DESCR = "Display this help menu.";
+constexpr const char *INPUT_DESCR = "First argument. Path to OBJ or STL input file.";
+constexpr const char *OUTPUT_DESCR = "Second argument. Path to QEF, PLY or VL32 output file.";
+constexpr const char *RESOLUTION_DESCR = "Maximum voxel grid resolution on any axis. (Required)";
+constexpr const char *STRATEGY_DESCR = "Strategy for combining voxels of different triangles. (Default: max)";
+
+int main(int argc, char **argv)
 {
-#ifndef OBJ2VOXEL_TEST
-    if (argc < 4) {
-        VXIO_LOG(ERROR, "Usage: <in_file:path> <out_file:path> <resolution:uint> [color_strat:(max|blend)=max]");
+    using namespace obj2voxels;
+
+    const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
+                                                                     {"blend", ColorStrategy::BLEND}};
+
+    args::ArgumentParser parser(HEADER, FOOTER);
+
+    args::Group ggroup(parser, "General Options:");
+    args::HelpFlag helpArg(ggroup, "help", HELP_DESCR, {'h', "help"});
+
+    args::Group fgroup(parser, "File Options:");
+    args::Positional<std::string> inFileArg(fgroup, "INPUT_FILE", INPUT_DESCR);
+    args::Positional<std::string> outFileArg(fgroup, "OUTPUT_FILE", OUTPUT_DESCR);
+
+    args::Group vgroup(parser, "Voxelization Options:");
+    args::ValueFlag<unsigned> resolutionArg(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
+    args::MapFlag<std::string, ColorStrategy> strategyArg(
+        vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, ColorStrategy::MAX);
+
+    bool complete = parser.ParseCLI(argc, argv);
+    complete &= parser.Matched();
+    complete &= inFileArg.Matched();
+    complete &= outFileArg.Matched();
+    complete &= resolutionArg.Matched();
+
+    if (helpArg.Matched() || not complete) {
+        parser.Help(std::cout);
         return 1;
     }
-#endif
-    if constexpr (voxelio::build::DEBUG) {
-        voxelio::logLevel = voxelio::LogLevel::DEBUG;
-        VXIO_LOG(DEBUG, "Running debug build");
-    }
 
-    std::string inFile = OBJ2VOXEL_TEST_STRING(argv[1], "/tmp/obj2voxel/in.obj");
-    std::string outFile = OBJ2VOXEL_TEST_STRING(argv[2], "/tmp/obj2voxel/out.qef");
-    std::string resolutionStr = OBJ2VOXEL_TEST_STRING(argv[3], "1024");
-    std::string colorStratStr = OBJ2VOXEL_TEST_STRING(argc >= 5 ? argv[4] : "max", "max");
-
-    obj2voxels::mainImpl(std::move(inFile), std::move(outFile), std::move(resolutionStr), std::move(colorStratStr));
+    obj2voxels::mainImpl(inFileArg.Get(), outFileArg.Get(), resolutionArg.Get(), strategyArg.Get());
 }

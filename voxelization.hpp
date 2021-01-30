@@ -25,6 +25,11 @@ enum class ColorStrategy {
     BLEND
 };
 
+constexpr const char *nameOf(ColorStrategy strategy)
+{
+    return strategy == ColorStrategy::MAX ? "MAX" : "BLEND";
+}
+
 /// Parses the color strategy. This function is case sensitive.
 inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 {
