@@ -49,6 +49,18 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 
 using InsertionFunction = void (*)(std::map<Vec3u, WeightedColor> &, Vec3u, WeightedColor);
 
+/**
+ * @brief Scales down a map of voxels to a lower resolution and combines multiple colors into one using the given
+ * strategy.
+ * @param voxels the input voxels. This map is passed by value and emptied in the process.
+ * @param strategy the color strategy for combining voxel colors
+ * @param divisor the divisor of the model size
+ * @return the downscaled model
+ */
+std::map<Vec3u, WeightedColor> downscale(std::map<Vec3u, WeightedColor> voxels,
+                                         ColorStrategy strategy,
+                                         unsigned divisor = 2);
+
 /// Throwaway class which manages all necessary data structures for voxelization and simplifies the procedure from the
 /// caller's side to just using voxelize(triangle).
 ///

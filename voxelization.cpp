@@ -468,6 +468,28 @@ void voxelizeTriangle(VisualTriangle inputTriangle,
 
 }  // namespace
 
+// DOWNSCALING =========================================================================================================
+
+std::map<Vec3u, WeightedColor> downscale(std::map<Vec3u, WeightedColor> voxels,
+                                         ColorStrategy strategy,
+                                         unsigned divisor)
+{
+    if (divisor == 1) {
+        return voxels;
+    }
+
+    std::map<Vec3u, WeightedColor> result;
+
+    const InsertionFunction insert = insertionFunctionOf(strategy);
+
+    for (auto iter = voxels.begin(); iter != voxels.end(); iter = voxels.erase(iter)) {
+        const Vec3u pos = iter->first / divisor;
+        insert(result, pos, iter->second);
+    }
+
+    return result;
+}
+
 // VOXELIZER IMPLEMENTATION ============================================================================================
 
 Voxelizer::Voxelizer(ColorStrategy colorStrategy) : insertionFunction{insertionFunctionOf(colorStrategy)} {}

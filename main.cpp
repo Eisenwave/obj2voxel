@@ -186,8 +186,12 @@ std::map<Vec3u, WeightedColor> voxelizeStl(const std::string &inFile,
     return std::move(voxelizer.voxels);
 }
 
-int mainImpl(
-    std::string inFile, std::string outFile, std::string textureFile, unsigned resolution, ColorStrategy colorStrategy)
+int mainImpl(std::string inFile,
+             std::string outFile,
+             std::string textureFile,
+             unsigned resolution,
+             bool supersample,
+             ColorStrategy colorStrategy)
 {
     if constexpr (voxelio::build::DEBUG) {
         voxelio::logLevel = voxelio::LogLevel::DEBUG;
@@ -237,13 +241,18 @@ int mainImpl(
     globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
 #endif
 
+    unsigned sampleRes = resolution * (1 + supersample);
     std::map<Vec3u, WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ
-                                                        ? voxelizeObj(inFile, textureFile, resolution, colorStrategy)
-                                                        : voxelizeStl(inFile, resolution, colorStrategy);
+                                                        ? voxelizeObj(inFile, textureFile, sampleRes, colorStrategy)
+                                                        : voxelizeStl(inFile, sampleRes, colorStrategy);
 
 #ifdef OBJ2VOXEL_DUMP_STL
     dumpDebugStl("/tmp/obj2voxel_debug.stl");
 #endif
+
+    if (supersample) {
+        weightedVoxels = downscale(weightedVoxels, colorStrategy);
+    }
 
     VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
     bool success = writeMapWithVoxelio(weightedVoxels, resolution, *outType, *outStream);
@@ -265,6 +274,9 @@ constexpr const char *RESOLUTION_DESCR = "Maximum voxel grid resolution on any a
 constexpr const char *STRATEGY_DESCR =
     "Strategy for combining voxels of different triangles. "
     "Blend gives smoother colors at triangle edges but might produce new and unwanted colors. (Default: max)";
+constexpr const char *SS_DESCR =
+    "Enables supersampling. "
+    "The model is voxelized at double resolution and then downscaled while combining colors.";
 
 int main(int argc, char **argv)
 {
@@ -285,6 +297,7 @@ int main(int argc, char **argv)
 
     args::Group vgroup(parser, "Voxelization Options:");
     args::ValueFlag<unsigned> resolutionArg(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
+    args::Flag ssArg(vgroup, "supersample", SS_DESCR, {'u'});
     args::MapFlag<std::string, ColorStrategy> strategyArg(
         vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, ColorStrategy::MAX);
 
@@ -303,5 +316,6 @@ int main(int argc, char **argv)
                          std::move(outFileArg.Get()),
                          std::move(textureArg.Get()),
                          resolutionArg.Get(),
+                         ssArg.Get(),
                          strategyArg.Get());
 }

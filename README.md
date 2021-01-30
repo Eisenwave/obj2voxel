@@ -37,6 +37,7 @@ obj2voxel in.obj out.qef -t texture.png -r 128 -s max
   This texture is used for triangles with UV coordinates but no materials.
 - `-r` is the maximum voxel grid resolution on any axis.
 - `-s` is a coloring strategy for when multiple triangles occupy one voxel.
+- `-u` enables 2x supersampling.
   
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
@@ -60,6 +61,11 @@ voxel.
 
 **Example 2:** "Sword" model. `max` is bottom, `blend` is top.
 ![blend vs max using Sword model](img/blend_vs_max_sword.png)
+
+Supersampling can also improve color accuracy by voxelizing at a higher resolution and blending multiple voxels.
+In this comparison, the right cow is supersampled:
+![regular vs 2x supersampling](img/supersampling_spot.png)
+Supersampling will usually produce slightly more voxels.
   
 ## Supported Formats
 
