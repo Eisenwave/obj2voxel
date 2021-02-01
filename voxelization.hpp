@@ -47,7 +47,7 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
     return false;
 }
 
-using InsertionFunction = void (*)(std::map<Vec3u, WeightedColor> &, Vec3u, WeightedColor);
+using InsertionFunction = void (*)(VoxelMap<WeightedColor> &, Vec3u, WeightedColor);
 
 /**
  * @brief Scales down a map of voxels to a lower resolution and combines multiple colors into one using the given
@@ -57,9 +57,7 @@ using InsertionFunction = void (*)(std::map<Vec3u, WeightedColor> &, Vec3u, Weig
  * @param divisor the divisor of the model size
  * @return the downscaled model
  */
-std::map<Vec3u, WeightedColor> downscale(std::map<Vec3u, WeightedColor> voxels,
-                                         ColorStrategy strategy,
-                                         unsigned divisor = 2);
+VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy strategy, unsigned divisor = 2);
 
 /// Throwaway class which manages all necessary data structures for voxelization and simplifies the procedure from the
 /// caller's side to just using voxelize(triangle).
@@ -70,8 +68,8 @@ struct Voxelizer {
 
     std::map<std::string, Texture> textures;
     std::vector<TexturedTriangle> buffers[3]{};
-    std::map<Vec3u, WeightedUv> uvBuffer;
-    std::map<Vec3u, WeightedColor> voxels;
+    VoxelMap<WeightedUv> uvBuffer;
+    VoxelMap<WeightedColor> voxels;
     Vec3 meshMin{}, meshMax{};
     real_type scaleFactor = 1;
 

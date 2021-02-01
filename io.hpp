@@ -6,7 +6,6 @@
 #include "voxelio/filetype.hpp"
 #include "voxelio/streamfwd.hpp"
 
-#include <map>
 #include <optional>
 #include <vector>
 
@@ -54,7 +53,7 @@ std::vector<f32> loadStl(const std::string &inFile);
 Texture loadTexture(const std::string &name);
 
 /// Writes a voxel map to disk using the voxelio format of choice.
-[[nodiscard]] int writeMapWithVoxelio(std::map<Vec3u, WeightedColor> &map,
+[[nodiscard]] int writeMapWithVoxelio(VoxelMap<WeightedColor> &map,
                                       usize resolution,
                                       FileType outFormat,
                                       FileOutputStream &out);

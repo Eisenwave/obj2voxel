@@ -55,7 +55,7 @@ constexpr real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal)
 
 /// Emplaces a weighted type in a map at the given location or combines it with the already value.
 template <ColorStrategy STRATEGY, typename T>
-inline void insertWeighted(std::map<Vec3u, Weighted<T>> &map, Vec3u pos, Weighted<T> color)
+inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> color)
 {
     auto [location, success] = map.emplace(pos, color);
     if (not success) {
@@ -390,7 +390,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                          TexturedTriangle subTriangle,
                          std::vector<TexturedTriangle> *preSplitBuffer,
                          std::vector<TexturedTriangle> *postSplitBuffer,
-                         std::map<Vec3u, WeightedUv> &out)
+                         VoxelMap<WeightedUv> &out)
 {
     // sqrt(3) = 1.73... with some leeway to account for imprecision
     constexpr real_type distanceLimit = 2;
@@ -441,9 +441,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
  * @param buffers three buffers which are used for intermediate operations
  * @param out the output map of voxel locations to weighted colors
  */
-void voxelizeTriangle(VisualTriangle inputTriangle,
-                      std::vector<TexturedTriangle> buffers[3],
-                      std::map<Vec3u, WeightedUv> &out)
+void voxelizeTriangle(VisualTriangle inputTriangle, std::vector<TexturedTriangle> buffers[3], VoxelMap<WeightedUv> &out)
 {
     VXIO_DEBUG_ASSERT_NOTNULL(buffers);
     for (size_t i = 0; i < 3; ++i) {
@@ -470,20 +468,20 @@ void voxelizeTriangle(VisualTriangle inputTriangle,
 
 // DOWNSCALING =========================================================================================================
 
-std::map<Vec3u, WeightedColor> downscale(std::map<Vec3u, WeightedColor> voxels,
-                                         ColorStrategy strategy,
-                                         unsigned divisor)
+VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy strategy, unsigned divisor)
 {
+    VXIO_ASSERTM(isPow2(divisor), "Divisor must be power of 2 but is " + stringify(divisor));
+
     if (divisor == 1) {
         return voxels;
     }
 
-    std::map<Vec3u, WeightedColor> result;
+    VoxelMap<WeightedColor> result;
 
     const InsertionFunction insert = insertionFunctionOf(strategy);
 
     for (auto iter = voxels.begin(); iter != voxels.end(); iter = voxels.erase(iter)) {
-        const Vec3u pos = iter->first / divisor;
+        const Vec3u32 pos = voxels.posOf(iter->first) / divisor;
         insert(result, pos, iter->second);
     }
 
@@ -518,7 +516,8 @@ void Voxelizer::voxelize(VisualTriangle triangle)
 
     ++triangleCount;
     obj2voxel::voxelizeTriangle(triangle, buffers, uvBuffer);
-    for (auto &[pos, weightedUv] : uvBuffer) {
+    for (auto &[index, weightedUv] : uvBuffer) {
+        Vec3u32 pos = uvBuffer.posOf(index);
         Vec3f color = triangle.colorAt_f(weightedUv.value);
         this->insertionFunction(voxels, pos, {weightedUv.weight, color});
     }

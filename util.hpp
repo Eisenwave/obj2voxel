@@ -4,10 +4,17 @@
 #include "3rd_party/tinyobj.hpp"
 
 #include "voxelio/color.hpp"
+#include "voxelio/ileave.hpp"
 #include "voxelio/types.hpp"
 #include "voxelio/vec.hpp"
 
+#define OBJ2VOXEL_USE_UNORDERED_MAP
+
+#ifdef OBJ2VOXEL_USE_UNORDERED_MAP
+#include <unordered_map>
+#else
 #include <map>
+#endif
 
 namespace obj2voxel {
 
@@ -155,6 +162,39 @@ constexpr Weighted<T> max(const Weighted<T> &lhs, const Weighted<T> &rhs)
 {
     return lhs.weight > rhs.weight ? lhs : rhs;
 }
+
+// VOXEL MAP ===========================================================================================================
+
+template <typename K, typename V>
+#ifdef OBJ2VOXEL_USE_UNORDERED_MAP
+using voxel_map_base_type = std::unordered_map<K, V>;
+#else
+using voxel_map_base_type = std::map<K, V>;
+#endif
+
+template <typename T>
+struct VoxelMap : public voxel_map_base_type<u64, T> {
+    using base_type = voxel_map_base_type<u64, T>;
+    using iterator = typename base_type::iterator;
+
+    u64 indexOf(Vec3u32 pos) const
+    {
+        return voxelio::ileave3(pos.x(), pos.y(), pos.z());
+    }
+
+    Vec3u32 posOf(u64 index) const
+    {
+        Vec3u32 result;
+        voxelio::dileave3(index, result.data());
+        return result;
+    }
+
+    template <typename V>
+    std::pair<iterator, bool> emplace(Vec3u pos, V &&value)
+    {
+        return static_cast<base_type *>(this)->emplace(indexOf(pos), std::forward<V>(value));
+    }
+};
 
 }  // namespace obj2voxel
 

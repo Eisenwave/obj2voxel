@@ -151,7 +151,7 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     }
 }
 
-[[nodiscard]] int writeMapWithVoxelio(std::map<Vec3u, WeightedColor> &map,
+[[nodiscard]] int writeMapWithVoxelio(VoxelMap<WeightedColor> &map,
                                       usize resolution,
                                       FileType outFormat,
                                       FileOutputStream &out)
@@ -182,7 +182,8 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
         return true;
     };
 
-    for (auto [pos, weightedColor] : map) {
+    for (auto [index, weightedColor] : map) {
+        Vec3u32 pos = map.posOf(index);
         Color32 color = Color32{weightedColor.value};
         VOXEL_BUFFER_32[voxelIndex].pos = pos.cast<i32>();
         if (usePalette) {

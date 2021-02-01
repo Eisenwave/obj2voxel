@@ -8,7 +8,6 @@
 #include "voxelio/stringmanip.hpp"
 
 #include <iostream>
-#include <map>
 #include <memory>
 #include <set>
 #include <vector>
@@ -36,10 +35,10 @@ namespace {
 
 using namespace voxelio;
 
-std::map<Vec3u, WeightedColor> voxelizeObj(const std::string &inFile,
-                                           const std::string &texture,
-                                           const unsigned resolution,
-                                           const ColorStrategy colorStrategy)
+VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
+                                    const std::string &texture,
+                                    const unsigned resolution,
+                                    const ColorStrategy colorStrategy)
 {
     // Load obj model
     tinyobj::attrib_t attrib;
@@ -148,9 +147,9 @@ std::map<Vec3u, WeightedColor> voxelizeObj(const std::string &inFile,
     return std::move(voxelizer.voxels);
 }
 
-std::map<Vec3u, WeightedColor> voxelizeStl(const std::string &inFile,
-                                           const unsigned resolution,
-                                           const ColorStrategy colorStrategy)
+VoxelMap<WeightedColor> voxelizeStl(const std::string &inFile,
+                                    const unsigned resolution,
+                                    const ColorStrategy colorStrategy)
 {
     std::vector<f32> stl = loadStl(inFile);
 
@@ -242,9 +241,9 @@ int mainImpl(std::string inFile,
 #endif
 
     unsigned sampleRes = resolution * (1 + supersample);
-    std::map<Vec3u, WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ
-                                                        ? voxelizeObj(inFile, textureFile, sampleRes, colorStrategy)
-                                                        : voxelizeStl(inFile, sampleRes, colorStrategy);
+    VoxelMap<WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ
+                                                 ? voxelizeObj(inFile, textureFile, sampleRes, colorStrategy)
+                                                 : voxelizeStl(inFile, sampleRes, colorStrategy);
 
 #ifdef OBJ2VOXEL_DUMP_STL
     dumpDebugStl("/tmp/obj2voxel_debug.stl");
