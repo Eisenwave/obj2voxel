@@ -52,7 +52,7 @@ VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
         VXIO_LOG(WARNING, "Model has no vertices, aborting and writing empty voxel model");
         return {};
     }
-    VXIO_LOG(INFO, "Loaded OBJ model with " + stringify(attrib.vertices.size() / 3) + " vertices");
+    VXIO_LOG(INFO, "Loaded OBJ model with " + stringifyLargeInt(attrib.vertices.size() / 3) + " vertices");
 
     // Determine mesh to voxel space transform
 
@@ -65,20 +65,24 @@ VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
     // Load textures
     Texture *defaultTexture = nullptr;
     if (not texture.empty()) {
-        auto [location, success] = voxelizer.textures.emplace("", loadTexture(texture, "-t"));
-        VXIO_ASSERTM(success, "Multiple default textures?!");
-        defaultTexture = &location->second;
+        std::optional<Texture> loadedDefault = loadTexture(texture, "-t");
+        if (loadedDefault.has_value()) {
+            auto [location, success] = voxelizer.textures.emplace("", std::move(*loadedDefault));
+            VXIO_ASSERTM(success, "Multiple default textures?!");
+            defaultTexture = &location->second;
+        }
     }
     for (tinyobj::material_t &material : materials) {
         std::string name = material.diffuse_texname;
         if (name.empty()) {
             continue;
         }
-
-        Texture tex = loadTexture(name, material.name);
-        voxelizer.textures.emplace(std::move(name), std::move(tex));
+        std::optional<Texture> tex = loadTexture(name, material.name);
+        if (tex.has_value()) {
+            voxelizer.textures.emplace(std::move(name), std::move(*tex));
+        }
     }
-    VXIO_LOG(INFO, "Loaded " + stringifyDec(voxelizer.textures.size()) + " textures");
+    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(voxelizer.textures.size()) + " textures");
 
     // Loop over shapes
     for (usize s = 0; s < shapes.size(); s++) {
@@ -146,7 +150,7 @@ VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
             voxelizer.voxelize(triangle);
         }
     }
-    VXIO_LOG(INFO, "Voxelized " + stringify(voxelizer.triangleCount) + " triangles");
+    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(voxelizer.triangleCount) + " triangles");
 
     return std::move(voxelizer.voxels);
 }
@@ -157,7 +161,7 @@ VoxelMap<WeightedColor> voxelizeStl(const std::string &inFile,
 {
     std::vector<f32> stl = loadStl(inFile);
 
-    VXIO_LOG(INFO, "Loaded STL model with " + stringify(stl.size() / 3) + " vertices");
+    VXIO_LOG(INFO, "Loaded STL model with " + stringifyLargeInt(stl.size() / 3) + " vertices");
 
     Voxelizer voxelizer{colorStrategy};
 
@@ -184,7 +188,7 @@ VoxelMap<WeightedColor> voxelizeStl(const std::string &inFile,
         voxelizer.voxelize(std::move(triangle));
     }
 
-    VXIO_LOG(INFO, "Voxelized " + stringify(voxelizer.triangleCount) + " triangles");
+    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(voxelizer.triangleCount) + " triangles");
 
     return std::move(voxelizer.voxels);
 }
@@ -202,7 +206,7 @@ int mainImpl(std::string inFile,
     }
 
     VXIO_LOG(INFO,
-             "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringify(resolution) +
+             "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringifyLargeInt(resolution) +
                  " with strategy " + std::string(nameOf(colorStrategy)));
 
     if (inFile.empty()) {

@@ -111,10 +111,7 @@ struct Texture {
     Image image;
 
     /// Constructs the texture from a voxelio image.
-    Texture(Image image) : image{std::move(image)}
-    {
-        image.setWrapMode(WrapMode::CLAMP);
-    }
+    Texture(Image image) : image{std::move(image)} {}
 
     /// Returns the color at the given uv coordinates as a vector.
     Vec3f get(Vec2 uv) const

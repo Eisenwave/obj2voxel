@@ -50,7 +50,7 @@ bool loadObj(const std::string &inFile,
 std::vector<f32> loadStl(const std::string &inFile);
 
 /// Loads a texture with the given file name.
-Texture loadTexture(const std::string &name, const std::string &material);
+std::optional<Texture> loadTexture(const std::string &name, const std::string &material);
 
 /// Writes a voxel map to disk using the voxelio format of choice.
 [[nodiscard]] int writeMapWithVoxelio(VoxelMap<WeightedColor> &map,
