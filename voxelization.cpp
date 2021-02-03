@@ -15,17 +15,17 @@ namespace {
 constexpr bool DISABLE_PLANE_DISTANCE_TEST = false;
 constexpr real_type EPSILON = real_type(1) / (1 << 16);
 
-constexpr bool isZero(real_type x)
+inline bool isZero(real_type x)
 {
     return std::abs(x) < EPSILON;
 }
 
-constexpr bool eq(real_type x, unsigned plane)
+inline bool eq(real_type x, unsigned plane)
 {
     return isZero(x - real_type(plane));
 }
 
-constexpr real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, unsigned axis, unsigned plane)
+inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, unsigned axis, unsigned plane)
 {
     real_type d = -dir[axis];
     return isZero(d) ? 0 : (org[axis] - real_type(plane)) / d;
