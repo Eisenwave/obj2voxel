@@ -14,15 +14,16 @@ cd build
 cmake ..
 make         # optionally with -j <number of threads> option for multithreaded compile
 ```
+After installing, the executable will be in your `build` directory.
 
 ## Usage
 
 ```sh
 # Usage (the -t and -s options is optional)
-obj2voxel input_file output_file -t <texture_file> -r <resolution:uint> -s <color_strategy:(max|blend)>
+./obj2voxel input_file output_file -t <texture_file> -r <resolution:uint> -s <color_strategy:(max|blend)>
 
 # Example
-obj2voxel in.obj out.qef -t texture.png -r 128 -s max
+./obj2voxel in.obj out.qef -t texture.png -r 128 -s max
 ```
 
 **Explanation:** obj2voxel takes only positonal arguments:
