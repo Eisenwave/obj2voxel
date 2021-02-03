@@ -116,17 +116,17 @@ std::vector<f32> loadStl(const std::string &inFile)
     return result;
 }
 
-Texture loadTexture(const std::string &name)
+Texture loadTexture(const std::string &name, const std::string &material)
 {
     std::optional<FileInputStream> stream = FileInputStream::open(name);
     if (not stream.has_value()) {
-        VXIO_LOG(ERROR, "Failed to open texture file \"" + name + '\"');
+        VXIO_LOG(ERROR, "Failed to open texture file \"" + name + "\" of material \"" + material + '"');
         std::exit(1);
     }
 
     std::optional<Image> image = voxelio::png::decode(*stream, 4);
     if (not stream.has_value()) {
-        VXIO_LOG(ERROR, "Failed to decode texture file \"" + name + '"');
+        VXIO_LOG(ERROR, "Failed to decode texture file \"" + name + "\" of material \"" + material + '"');
         std::exit(1);
     }
 

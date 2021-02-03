@@ -65,13 +65,17 @@ VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
     // Load textures
     Texture *defaultTexture = nullptr;
     if (not texture.empty()) {
-        auto [location, success] = voxelizer.textures.emplace("", loadTexture(texture));
+        auto [location, success] = voxelizer.textures.emplace("", loadTexture(texture, "-t"));
         VXIO_ASSERTM(success, "Multiple default textures?!");
         defaultTexture = &location->second;
     }
     for (tinyobj::material_t &material : materials) {
         std::string name = material.diffuse_texname;
-        Texture tex = loadTexture(name);
+        if (name.empty()) {
+            continue;
+        }
+
+        Texture tex = loadTexture(name, material.name);
         voxelizer.textures.emplace(std::move(name), std::move(tex));
     }
     VXIO_LOG(INFO, "Loaded " + stringifyDec(voxelizer.textures.size()) + " textures");
