@@ -79,6 +79,7 @@ Supersampling will usually produce slightly more voxels.
 - **QEF** (Write)
 - **VL32** (Write)
 - **PLY** (Write)
+- **XYZRGB** (Write)
 
 ### PLY
 
