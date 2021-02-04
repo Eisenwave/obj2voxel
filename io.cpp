@@ -7,6 +7,7 @@
 #include "voxelio/format/png.hpp"
 #include "voxelio/format/qef.hpp"
 #include "voxelio/format/vl32.hpp"
+#include "voxelio/format/xyzrgb.hpp"
 
 #include "voxelio/filetype.hpp"
 #include "voxelio/log.hpp"
@@ -148,6 +149,7 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     case FileType::QUBICLE_EXCHANGE: return new qef::Writer{stream};
     case FileType::VL32: return new vl32::Writer{stream};
     case FileType::STANFORD_TRIANGLE: return new ply::Writer{stream};
+    case FileType::XYZRGB: return new xyzrgb::Writer{stream};
     default: VXIO_ASSERT_UNREACHABLE();
     }
 }

@@ -231,7 +231,7 @@ int mainImpl(std::string inFile,
     }
 
     static const std::set<FileType> supportedOut{
-        FileType::QUBICLE_EXCHANGE, FileType::VL32, FileType::STANFORD_TRIANGLE};
+        FileType::QUBICLE_EXCHANGE, FileType::VL32, FileType::STANFORD_TRIANGLE, FileType::XYZRGB};
     if (supportedOut.find(*outType) == supportedOut.end()) {
         VXIO_LOG(ERROR, "Detected output file type (" + std::string(nameOf(*outType)) + ") is not supported");
         return 1;
