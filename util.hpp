@@ -57,7 +57,7 @@ constexpr Vec<T, N> applyUnary(Vec<T, N> a, UnaryFunction function)
 template <typename T, size_t N>
 constexpr Vec<T, N> min(Vec<T, N> a, Vec<T, N> b)
 {
-    using function_type = const T&(*)(const T&,const T&);
+    using function_type = const T &(*) (const T &, const T &);
     return detail::applyBinary<T, N, function_type>(a, b, std::min<T>);
 }
 
@@ -65,7 +65,7 @@ constexpr Vec<T, N> min(Vec<T, N> a, Vec<T, N> b)
 template <typename T, size_t N>
 constexpr Vec<T, N> max(Vec<T, N> a, Vec<T, N> b)
 {
-    using function_type = const T&(*)(const T&,const T&);
+    using function_type = const T &(*) (const T &, const T &);
     return detail::applyBinary<T, N, function_type>(a, b, std::max<T>);
 }
 

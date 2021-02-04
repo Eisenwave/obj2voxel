@@ -492,18 +492,32 @@ VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy 
 
 Voxelizer::Voxelizer(ColorStrategy colorStrategy) : insertionFunction{insertionFunctionOf(colorStrategy)} {}
 
-void Voxelizer::initTransform(Vec3 min, Vec3 max, unsigned resolution)
+void Voxelizer::initTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation)
 {
     meshMin = min;
     meshMax = max;
 
-    Vec3 meshSize = max - min;
-    scaleFactor = (real_type(resolution) - ANTI_BLEED) / obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
+    const Vec3 meshSize = max - min;
+    const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
+    const real_type scaleFactor = (real_type(resolution) - ANTI_BLEED) / maxOfAllAxes;
+    const Vec3 baseTranslation = (-meshMin * scaleFactor) + Vec3::filledWith(ANTI_BLEED / 2);
+
+    for (usize i = 0; i < 3; ++i) {
+        linearTransform[i] = Vec3::zero();
+        linearTransform[i][permutation[i]] = scaleFactor;
+        translation[i] = baseTranslation[permutation[i]];
+        VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + linearTransform[i].toString());
+    }
+
+    VXIO_LOG(DEBUG, "Mesh translation = " + translation.toString());
 }
 
 Vec3 Voxelizer::transform(Vec3 v)
 {
-    return (v - meshMin) * scaleFactor + Vec3::filledWith(ANTI_BLEED / 2);
+    real_type x = dot(linearTransform[0], v);
+    real_type y = dot(linearTransform[1], v);
+    real_type z = dot(linearTransform[2], v);
+    return Vec3{x, y, z} + translation;
 }
 
 void Voxelizer::voxelize(VisualTriangle triangle)

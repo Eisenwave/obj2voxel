@@ -35,17 +35,22 @@ namespace {
 
 using namespace voxelio;
 
-VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
-                                    const std::string &texture,
-                                    const unsigned resolution,
-                                    const ColorStrategy colorStrategy)
+struct VoxelizationArgs {
+    std::string inFile;
+    std::string texture;
+    unsigned resolution;
+    ColorStrategy colorStrategy;
+    Vec3u permutation;
+};
+
+VoxelMap<WeightedColor> voxelizeObj(VoxelizationArgs args)
 {
     // Load obj model
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
 
-    if (not loadObj(inFile, attrib, shapes, materials)) {
+    if (not loadObj(args.inFile, attrib, shapes, materials)) {
         std::exit(1);
     }
     if (attrib.vertices.empty()) {
@@ -59,13 +64,13 @@ VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
     Vec3 meshMin, meshMax;
     findBoundaries(attrib.vertices, meshMin, meshMax);
 
-    Voxelizer voxelizer{colorStrategy};
-    voxelizer.initTransform(meshMin, meshMax, resolution);
+    Voxelizer voxelizer{args.colorStrategy};
+    voxelizer.initTransform(meshMin, meshMax, args.resolution, args.permutation);
 
     // Load textures
     Texture *defaultTexture = nullptr;
-    if (not texture.empty()) {
-        std::optional<Texture> loadedDefault = loadTexture(texture, "-t");
+    if (not args.texture.empty()) {
+        std::optional<Texture> loadedDefault = loadTexture(args.texture, "-t");
         if (loadedDefault.has_value()) {
             auto [location, success] = voxelizer.textures.emplace("", std::move(*loadedDefault));
             VXIO_ASSERTM(success, "Multiple default textures?!");
@@ -155,20 +160,18 @@ VoxelMap<WeightedColor> voxelizeObj(const std::string &inFile,
     return std::move(voxelizer.voxels);
 }
 
-VoxelMap<WeightedColor> voxelizeStl(const std::string &inFile,
-                                    const unsigned resolution,
-                                    const ColorStrategy colorStrategy)
+VoxelMap<WeightedColor> voxelizeStl(VoxelizationArgs args)
 {
-    std::vector<f32> stl = loadStl(inFile);
+    std::vector<f32> stl = loadStl(args.inFile);
 
     VXIO_LOG(INFO, "Loaded STL model with " + stringifyLargeInt(stl.size() / 3) + " vertices");
 
-    Voxelizer voxelizer{colorStrategy};
+    Voxelizer voxelizer{args.colorStrategy};
 
     {
         Vec3 meshMin, meshMax;
         findBoundaries(stl, meshMin, meshMax);
-        voxelizer.initTransform(meshMin, meshMax, resolution);
+        voxelizer.initTransform(meshMin, meshMax, args.resolution, args.permutation);
     }
 
     f32 *data = stl.data();
@@ -198,13 +201,9 @@ int mainImpl(std::string inFile,
              std::string textureFile,
              unsigned resolution,
              bool supersample,
-             ColorStrategy colorStrategy)
+             ColorStrategy colorStrategy,
+             Vec3u permutation)
 {
-    if constexpr (voxelio::build::DEBUG) {
-        voxelio::logLevel = voxelio::LogLevel::DEBUG;
-        VXIO_LOG(DEBUG, "Running debug build");
-    }
-
     VXIO_LOG(INFO,
              "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringifyLargeInt(resolution) +
                  " with strategy " + std::string(nameOf(colorStrategy)));
@@ -248,23 +247,47 @@ int mainImpl(std::string inFile,
     globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
 #endif
 
-    unsigned sampleRes = resolution * (1 + supersample);
-    VoxelMap<WeightedColor> weightedVoxels = *inType == FileType::WAVEFRONT_OBJ
-                                                 ? voxelizeObj(inFile, textureFile, sampleRes, colorStrategy)
-                                                 : voxelizeStl(inFile, sampleRes, colorStrategy);
+    VoxelizationArgs args;
+    args.inFile = std::move(inFile);
+    args.texture = std::move(textureFile);
+    args.resolution = resolution * (1 + supersample);
+    args.colorStrategy = colorStrategy;
+    args.permutation = permutation;
+
+    VoxelMap<WeightedColor> voxels = *inType == FileType::WAVEFRONT_OBJ ? voxelizeObj(args) : voxelizeStl(args);
 
 #ifdef OBJ2VOXEL_DUMP_STL
     dumpDebugStl("/tmp/obj2voxel_debug.stl");
 #endif
 
     if (supersample) {
-        weightedVoxels = downscale(weightedVoxels, colorStrategy);
+        voxels = downscale(voxels, colorStrategy);
     }
 
     VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
-    bool success = writeMapWithVoxelio(weightedVoxels, resolution, *outType, *outStream);
+    bool success = writeMapWithVoxelio(voxels, resolution, *outType, *outStream);
 
     return not success;
+}
+
+bool parsePermutation(std::string str, Vec3u &out)
+{
+    if (str.size() != 3) {
+        return false;
+    }
+    toLowerCase(str);
+
+    bool found[3]{};
+
+    for (usize i = 0; i < 3; ++i) {
+        unsigned axis = static_cast<unsigned>(str[i] - 'x');
+        if (axis > 2) {
+            return false;
+        }
+        out[i] = axis;
+        found[axis] = true;
+    }
+    return found[0] + found[1] + found[2] == 3;
 }
 
 }  // namespace
@@ -281,6 +304,7 @@ constexpr const char *RESOLUTION_DESCR = "Maximum voxel grid resolution on any a
 constexpr const char *STRATEGY_DESCR =
     "Strategy for combining voxels of different triangles. "
     "Blend gives smoother colors at triangle edges but might produce new and unwanted colors. (Default: max)";
+constexpr const char *PERMUTATION_ARG = "Permutation of xyz axes in the model. (Default: xyz)";
 constexpr const char *SS_DESCR =
     "Enables supersampling. "
     "The model is voxelized at double resolution and then downscaled while combining colors.";
@@ -288,6 +312,11 @@ constexpr const char *SS_DESCR =
 int main(int argc, char **argv)
 {
     using namespace obj2voxel;
+
+    if constexpr (voxelio::build::DEBUG) {
+        voxelio::logLevel = voxelio::LogLevel::DEBUG;
+        VXIO_LOG(DEBUG, "Running debug build");
+    }
 
     const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
                                                                      {"blend", ColorStrategy::BLEND}};
@@ -304,9 +333,10 @@ int main(int argc, char **argv)
 
     args::Group vgroup(parser, "Voxelization Options:");
     args::ValueFlag<unsigned> resolutionArg(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
-    args::Flag ssArg(vgroup, "supersample", SS_DESCR, {'u'});
     args::MapFlag<std::string, ColorStrategy> strategyArg(
         vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, ColorStrategy::MAX);
+    args::ValueFlag<std::string> permutationArg(vgroup, "permutation", PERMUTATION_ARG, {'p'}, "xyz");
+    args::Flag ssArg(vgroup, "supersample", SS_DESCR, {'u'});
 
     bool complete = parser.ParseCLI(argc, argv);
     complete &= parser.Matched();
@@ -319,10 +349,18 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    obj2voxel::mainImpl(std::move(inFileArg.Get()),
-                        std::move(outFileArg.Get()),
-                        std::move(textureArg.Get()),
-                        resolutionArg.Get(),
-                        ssArg.Get(),
-                        strategyArg.Get());
+    Vec3u permutation;
+    if (not parsePermutation(permutationArg.Get(), permutation)) {
+        VXIO_LOG(ERROR, "\"" + permutationArg.Get() + "\" is not a valid permutation");
+        return 1;
+    }
+    VXIO_LOG(DEBUG, "Parsed permutation: " + permutationArg.Get() + " -> " + permutation.toString());
+
+    mainImpl(std::move(inFileArg.Get()),
+             std::move(outFileArg.Get()),
+             std::move(textureArg.Get()),
+             resolutionArg.Get(),
+             ssArg.Get(),
+             strategyArg.Get(),
+             permutation);
 }

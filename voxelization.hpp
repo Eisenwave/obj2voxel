@@ -66,12 +66,16 @@ VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy 
 struct Voxelizer {
     static constexpr real_type ANTI_BLEED = 0.5f;
 
+private:
+    Vec3 meshMin{}, meshMax{};
+    Vec3 linearTransform[3];
+    Vec3 translation;
+
+public:
     std::map<std::string, Texture> textures;
     std::vector<TexturedTriangle> buffers[3]{};
     VoxelMap<WeightedUv> uvBuffer;
     VoxelMap<WeightedColor> voxels;
-    Vec3 meshMin{}, meshMax{};
-    real_type scaleFactor = 1;
 
     InsertionFunction insertionFunction;
     usize triangleCount = 0;
@@ -81,7 +85,7 @@ struct Voxelizer {
     Voxelizer(const Voxelizer &&) = delete;
     Voxelizer(Voxelizer &&) = delete;
 
-    void initTransform(Vec3 min, Vec3 max, unsigned resolution);
+    void initTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation);
 
     Vec3 transform(Vec3 v);
 
