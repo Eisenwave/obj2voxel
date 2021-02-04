@@ -38,6 +38,9 @@ After installing, the executable will be in your `build` directory.
   This texture is used for triangles with UV coordinates but no materials.
 - `-r` is the maximum voxel grid resolution on any axis.
 - `-s` is a coloring strategy for when multiple triangles occupy one voxel.
+- `-p` is the axis permutation.
+  The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
+  This is useful for importing models from software where a different axis is being used for "up".
 - `-u` enables 2x supersampling.
   
 A usual run of obj2voxel looks like this:
