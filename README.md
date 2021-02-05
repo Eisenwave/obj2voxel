@@ -19,30 +19,58 @@ After installing, the executable will be in your `build` directory.
 ## Usage
 
 ```sh
-# Usage (the -t and -s options is optional)
-./obj2voxel input_file output_file -t <texture_file> -r <resolution:uint> -s <color_strategy:(max|blend)>
+# Usage
+./obj2voxel input_file output_file -r <resolution> # ...
 
 # Example
 ./obj2voxel in.obj out.qef -t texture.png -r 128 -s max
 ```
 
-**Explanation:** obj2voxel takes only positonal arguments:
-
-- `input_file` is the relative or absolute path to the input file.
-  Depending on the extension `.stl` or `.obj` a different input format is chosen.
-  If the file type can't be detected, the default is Wavefront OBJ.
-- `output_file` is the relative or absolue path to the output file.
-  Depending on the extension `.ply`, `.qef` or `.vl32` a different output format is chosen.
-  There is no default so obj2voxel exits if it can't be chosen.
-- `-t` is the optional path to a texture file.
-  This texture is used for triangles with UV coordinates but no materials.
-- `-r` is the maximum voxel grid resolution on any axis.
-- `-s` is a coloring strategy for when multiple triangles occupy one voxel.
-- `-p` is the axis permutation.
-  The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
-  This is useful for importing models from software where a different axis is being used for "up".
-- `-u` enables 2x supersampling.
+##### `input_file`
+is the relative or absolute path to the input file.
+Depending on the extension `.stl` or `.obj` a different input format is chosen.
+If the file type can't be detected, the default is Wavefront OBJ.
   
+##### `output_file`
+is the relative or absolue path to the output file.
+Depending on the extension `.ply`, `.qef`, etc. a different output format is chosen.
+Check the list of supported formats.
+There is no default so obj2voxel fails if the file type can't be identified by its extension.
+
+##### `-r <resolution>`
+is the voxel grid resolution.
+This is a maximum for all axes, meaning that a non-cubical model will still fit into this block.
+The output model will be at most r³ voxels large.
+
+**Example:** `-r 128`
+
+##### `-s (max|blend)`
+is a coloring strategy for when multiple triangles occupy one voxel.
+See below for more details on how this option impacts the voxels.
+The default is `max`.
+
+**Example:** `-s blend`
+
+##### `-t <texture>`
+is the optional path to a texture file.
+This texture is used for triangles with UV coordinates but no materials.
+There are some models which don't have material libraries at all.
+This option is very useful for those types of models.
+
+**Example:** `-t path/to/texture.png`
+
+##### `-p <permutation>`
+is the axis permutation.
+The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
+This is useful for importing models from software where a different axis is being used for "up".
+
+**Example:** `-p xzy`
+
+##### `-u`
+enables 2x supersampling.
+The model is voxelized at double resolution and then downscaled.
+See below for more details.
+
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
 
@@ -60,14 +88,14 @@ voxel.
   However, it introduces new colors and can make the model look blurry.
   For example, blend would produce a magenta edge between a red and blue triangle which might be unwanted.
 
-**Example 1:** "Spot" model. `max` is left, `blend` is right.
+**Example 1:** "Spot" model. `max` is left, `blend` is right.<br>
 ![blend vs max using Spot model](img/blend_vs_max_spot.png)
 
-**Example 2:** "Sword" model. `max` is bottom, `blend` is top.
+**Example 2:** "Sword" model. `max` is bottom, `blend` is top.<br>
 ![blend vs max using Sword model](img/blend_vs_max_sword.png)
 
 Supersampling can also improve color accuracy by voxelizing at a higher resolution and blending multiple voxels.
-In this comparison, the right cow is supersampled:
+In this comparison, the right cow is supersampled:<br>
 ![regular vs 2x supersampling](img/supersampling_spot.png)
 
 Supersampling will usually produce slightly more voxels.
