@@ -7,7 +7,10 @@ It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OB
 
 ## Installation
 
-Linux:
+Download the [latest release](https://github.com/eisenwave/obj2voxel/releases) executable.
+There are prebuilt binaries for Windows and Linux.
+Or, if you want to build from source, proceed as follows (on Linux):
+
 ```sh
 mkdir build
 cd build
