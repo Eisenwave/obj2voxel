@@ -122,45 +122,55 @@ void splitTriangle(const unsigned axis,
         eq(t.vertex(1)[axis], plane),
         eq(t.vertex(2)[axis], plane),
     };
-
-    const unsigned planarSum = planarVertices[0] + planarVertices[1] + planarVertices[2];
-
-    // Special case: triangle is parallel tothe splitting plane
-    if (planarSum == 3) {
-        pushLoIfTrueElseHi(std::move(t), true);
-        return;
-    }
-
     const bool loVertices[3]{
         t.vertex(0)[axis] <= real_type(plane),
         t.vertex(1)[axis] <= real_type(plane),
         t.vertex(2)[axis] <= real_type(plane),
     };
 
+    const unsigned planarSum = planarVertices[0] + planarVertices[1] + planarVertices[2];
     const unsigned loSum = loVertices[0] + loVertices[1] + loVertices[2];
 
+#define OBJ2VOXEL_LO_AND_PLANAR(lo, planar) (planar << 2) | lo
+    const unsigned caseNum = OBJ2VOXEL_LO_AND_PLANAR(loSum, planarSum);
+
+
+
+    switch (caseNum) {
     // Special case: All vertices are on the hi side of the splitting plane
-    if (loSum == 0) {
+    case OBJ2VOXEL_LO_AND_PLANAR(0, 0):
+    case OBJ2VOXEL_LO_AND_PLANAR(0, 1):
+    case OBJ2VOXEL_LO_AND_PLANAR(0, 2):
+    case OBJ2VOXEL_LO_AND_PLANAR(0, 3):
         pushLoIfTrueElseHi(std::move(t), false);
         return;
-    }
+
     // Special case: All vertices are on the lo side of the splitting plane
-    if (loSum == 3) {
+    case OBJ2VOXEL_LO_AND_PLANAR(3, 0):
+    case OBJ2VOXEL_LO_AND_PLANAR(3, 1):
+    case OBJ2VOXEL_LO_AND_PLANAR(3, 2):
+    case OBJ2VOXEL_LO_AND_PLANAR(3, 3):
+    // Special case: triangle is parallel to the splitting plane (except if all vertices are hi or lo)
+    case OBJ2VOXEL_LO_AND_PLANAR(1, 3):
+    case OBJ2VOXEL_LO_AND_PLANAR(2, 3):
         pushLoIfTrueElseHi(std::move(t), true);
         return;
-    }
+
     // Special case: Two vertices are on the splitting plane, meaning the triangle can't be split
     //               We must still make a decision whether to put it into outLo or outHi
-    if (planarSum == 2) {
+    case OBJ2VOXEL_LO_AND_PLANAR(1, 2):
+    case OBJ2VOXEL_LO_AND_PLANAR(2, 2): {
         const unsigned nonPlanarIndex = not planarVertices[0] ? 0 : not planarVertices[1] ? 1 : 2;
         const bool isNonPlanarLo = t.vertex(nonPlanarIndex)[axis] <= real_type(plane);
         pushLoIfTrueElseHi(std::move(t), isNonPlanarLo);
         return;
     }
+
     // Special case: One vertex lies on the splitting plane
     //               If the remaining vertices are both on one side, we also don't need to split
     //               Otherwise, we only perform one split with the side opposing the planar vertex
-    if (planarSum == 1) {
+    case OBJ2VOXEL_LO_AND_PLANAR(1, 1):
+    case OBJ2VOXEL_LO_AND_PLANAR(2, 1): {
         const unsigned planarIndex = planarVertices[0] ? 0 : planarVertices[1] ? 1 : 2;
         const unsigned nonPlanarIndices[2]{
             (planarIndex + 1) % 3,
@@ -210,9 +220,11 @@ void splitTriangle(const unsigned axis,
         pushLoIfTrueElseHi(std::move(triangles[1]), not isFirstTriangleLo);
         return;
     }
+
     // Regular case: None of the vertices are planar and the triangle is intersected by the splitting plane
     //               We put this into an else-block to make debugging easier by reducing the number of variables
-    else {
+    case OBJ2VOXEL_LO_AND_PLANAR(1, 0):
+    case OBJ2VOXEL_LO_AND_PLANAR(2, 0): {
         VXIO_DEBUG_ASSERT(loSum == 1 || loSum == 2);
         VXIO_DEBUG_ASSERT_EQ(planarSum, 0);
 
@@ -286,6 +298,9 @@ void splitTriangle(const unsigned axis,
         }
         return;
     }
+
+    }
+
     VXIO_DEBUG_ASSERT_UNREACHABLE();
     // clang-format on
 }
