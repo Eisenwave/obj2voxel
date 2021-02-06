@@ -137,16 +137,23 @@ VoxelMap<WeightedColor> voxelizeObj(VoxelizationArgs args)
                 }
             }
             else if (hasTexCoords) {
-                const std::string &textureName = materials[static_cast<usize>(materialIndex)].diffuse_texname;
+                const tinyobj::material_t &material = materials[static_cast<usize>(materialIndex)];
+                const std::string &textureName = material.diffuse_texname;
+                if (textureName.empty()) {
+                    goto untextured;
+                }
                 auto location = voxelizer.textures.find(textureName);
                 if (location == voxelizer.textures.end()) {
-                    VXIO_LOG(ERROR, "Face has invalid texture name \"" + textureName + '"');
+                    VXIO_LOG(ERROR,
+                             "Face with material \"" + material.name + "\" has unloaded texture name \"" + textureName +
+                                 '"');
                     std::exit(1);
                 }
                 triangle.texture = &location->second;
                 triangle.type = TriangleType::TEXTURED;
             }
             else {
+            untextured:
                 Vec3 color{materials[static_cast<usize>(materialIndex)].diffuse};
                 triangle.color = color.cast<float>();
                 triangle.type = TriangleType::UNTEXTURED;
