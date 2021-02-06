@@ -15,6 +15,8 @@
 #include "voxelio/stringmanip.hpp"
 #include "voxelio/voxelio.hpp"
 
+#include <algorithm>
+
 namespace obj2voxel {
 
 // INPUT ===============================================================================================================
@@ -119,7 +121,9 @@ std::vector<f32> loadStl(const std::string &inFile)
 
 std::optional<Texture> loadTexture(const std::string &name, const std::string &material)
 {
-    std::optional<FileInputStream> stream = FileInputStream::open(name);
+    std::string sanitizedName = name;
+    std::replace(sanitizedName.begin(), sanitizedName.end(), '\\', '/');
+    std::optional<FileInputStream> stream = FileInputStream::open(sanitizedName);
     if (not stream.has_value()) {
         VXIO_LOG(WARNING, "Failed to open texture file \"" + name + "\" of material \"" + material + '"');
         return std::nullopt;
