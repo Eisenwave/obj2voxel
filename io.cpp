@@ -123,7 +123,7 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
 {
     std::string sanitizedName = name;
     std::replace(sanitizedName.begin(), sanitizedName.end(), '\\', '/');
-    std::optional<FileInputStream> stream = FileInputStream::open(sanitizedName);
+    std::optional<FileInputStream> stream = FileInputStream::open(sanitizedName, OpenMode::BINARY);
     if (not stream.has_value()) {
         VXIO_LOG(WARNING, "Failed to open texture file \"" + name + "\" of material \"" + material + '"');
         return std::nullopt;
