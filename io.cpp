@@ -129,9 +129,11 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
         return std::nullopt;
     }
 
-    std::optional<Image> image = voxelio::png::decode(*stream, 4);
+    std::string err;
+    std::optional<Image> image = voxelio::png::decode(*stream, 4, err);
     if (not stream.has_value()) {
         VXIO_LOG(WARNING, "Could open, but failed to decode texture \"" + name + "\" of material \"" + material + '"');
+        VXIO_LOG(WARNING, "Caused by STBI error: " + err);
         return std::nullopt;
     }
     image->setWrapMode(WrapMode::REPEAT);
