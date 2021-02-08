@@ -1,5 +1,5 @@
-#ifndef IO_HPP
-#define IO_HPP
+#ifndef OBJ2VOXEL_IO_HPP
+#define OBJ2VOXEL_IO_HPP
 
 #include "triangle.hpp"
 
@@ -18,26 +18,16 @@ void writeTriangleAsBinaryToDebugStl(Triangle triangle);
 /// Dumps the debug STL file at the given file path.
 void dumpDebugStl(const std::string &path);
 
-template <typename Float>
-void findBoundaries(const std::vector<Float> &points, Vec<Float, 3> &outMin, Vec<Float, 3> &outMax)
-{
-    Vec<Float, 3> min = {points[0], points[1], points[2]};
-    Vec<Float, 3> max = min;
+struct TriangleStream {
+    virtual ~TriangleStream() = default;
+    virtual VisualTriangle next() = 0;
+    virtual bool hasNext() = 0;
+    virtual usize vertexCount() = 0;
 
-    for (size_t i = 0; i < points.size(); i += 3) {
-        Vec<Float, 3> p{points.data() + i};
-        min = obj2voxel::min(min, p);
-        max = obj2voxel::max(max, p);
-    }
+    virtual f32 *vertexBegin() = 0;
+};
 
-    outMin = min;
-    outMax = max;
-}
-
-bool loadObj(const std::string &inFile,
-             tinyobj::attrib_t &attrib,
-             std::vector<tinyobj::shape_t> &shapes,
-             std::vector<tinyobj::material_t> &materials);
+std::unique_ptr<TriangleStream> loadObj(const std::string &inFile, const std::string &textureFile);
 
 /**
  * @brief Loads an STL file from disk.
@@ -47,7 +37,7 @@ bool loadObj(const std::string &inFile,
  * @param inFile the input file path
  * @return a list of all vertex coordinates
  */
-std::vector<f32> loadStl(const std::string &inFile);
+std::unique_ptr<TriangleStream> loadStl(const std::string &inFile);
 
 /// Loads a texture with the given file name.
 std::optional<Texture> loadTexture(const std::string &name, const std::string &material);
@@ -60,4 +50,4 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
 
 }  // namespace obj2voxel
 
-#endif  // IO_HPP
+#endif  // OBJ2VOXEL_IO_HPP

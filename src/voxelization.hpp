@@ -1,5 +1,5 @@
-#ifndef VOXELIZATION_HPP
-#define VOXELIZATION_HPP
+#ifndef OBJ2VOXEL_VOXELIZATION_HPP
+#define OBJ2VOXEL_VOXELIZATION_HPP
 
 #include "triangle.hpp"
 #include "util.hpp"
@@ -59,37 +59,55 @@ using InsertionFunction = void (*)(VoxelMap<WeightedColor> &, Vec3u, WeightedCol
  */
 VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy strategy, unsigned divisor = 2);
 
+struct AffineTransform {
+    Vec3 matrix[3];
+    Vec3 translation;
+
+    constexpr Vec3 apply(Vec3 v) const
+    {
+        real_type x = dot(matrix[0], v);
+        real_type y = dot(matrix[1], v);
+        real_type z = dot(matrix[2], v);
+        return Vec3{x, y, z} + translation;
+    }
+};
+
 /// Throwaway class which manages all necessary data structures for voxelization and simplifies the procedure from the
 /// caller's side to just using voxelize(triangle).
 ///
 /// Before the Voxelizer can be used, a transform from model space must be initialized with initTransform(...);
-struct Voxelizer {
+class Voxelizer {
     static constexpr real_type ANTI_BLEED = 0.5f;
 
-private:
-    Vec3 meshMin{}, meshMax{};
-    Vec3 linearTransform[3];
-    Vec3 translation;
-
 public:
-    std::map<std::string, Texture> textures;
+    static AffineTransform computeTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation);
+
+private:
+    AffineTransform trans;
     std::vector<TexturedTriangle> buffers[3]{};
     VoxelMap<WeightedUv> uvBuffer;
-    VoxelMap<WeightedColor> voxels;
+    VoxelMap<WeightedColor> voxels_;
+    WeightedCombineFunction<Vec3f> combineFunction;
 
-    InsertionFunction insertionFunction;
-    usize triangleCount = 0;
-
-    Voxelizer(ColorStrategy colorStrategy);
+public:
+    Voxelizer(AffineTransform trans, ColorStrategy colorStrategy);
 
     Voxelizer(const Voxelizer &&) = delete;
-    Voxelizer(Voxelizer &&) = delete;
-
-    void initTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation);
-
-    Vec3 transform(Vec3 v);
+    Voxelizer(Voxelizer &&) = default;
 
     void voxelize(VisualTriangle triangle);
+
+    void mergeResults(VoxelMap<WeightedColor> &out)
+    {
+        merge(out, voxels_);
+    }
+
+    void merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source);
+
+    VoxelMap<WeightedColor> &voxels()
+    {
+        return voxels_;
+    }
 };
 
 }  // namespace obj2voxel

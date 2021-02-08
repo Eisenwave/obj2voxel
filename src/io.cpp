@@ -52,15 +52,169 @@ void dumpDebugStl(const std::string &path)
     } while (true);
 }
 
-bool loadObj(const std::string &inFile,
-             tinyobj::attrib_t &attrib,
-             std::vector<tinyobj::shape_t> &shapes,
-             std::vector<tinyobj::material_t> &materials)
+// TRIANGLE STREAMS ====================================================================================================
+
+namespace {
+
+struct ObjTriangleStream : public TriangleStream {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::map<std::string, Texture> textures;
+    Texture *defaultTexture = nullptr;
+
+    usize shapesIndex = 0;
+    usize faceIndex = 0;
+    usize indexOffset = 0;
+
+    bool hasNext() final
+    {
+        return shapesIndex < shapes.size() && faceIndex < shapes[shapesIndex].mesh.num_face_vertices.size();
+    }
+
+    VisualTriangle next() final;
+
+    usize vertexCount() final
+    {
+        return attrib.vertices.size() / 3;
+    }
+
+    f32 *vertexBegin() final
+    {
+        return attrib.vertices.data();
+    }
+};
+
+struct StlTriangleStream : public TriangleStream {
+    std::vector<f32> vertices;
+    usize index = 0;
+
+    bool hasNext() final
+    {
+        return index < vertices.size();
+    }
+
+    VisualTriangle next() final;
+
+    usize vertexCount() final
+    {
+        return vertices.size() / 3;
+    }
+
+    f32 *vertexBegin() final
+    {
+        return vertices.data();
+    }
+};
+
+VisualTriangle ObjTriangleStream::next()
+{
+    tinyobj::shape_t &shape = shapes[shapesIndex];
+
+    usize vertexCount = shape.mesh.num_face_vertices[faceIndex];
+    VXIO_DEBUG_ASSERT_EQ(vertexCount, 3);
+
+    VisualTriangle triangle;
+    bool hasTexCoords = true;
+
+    // Loop over vertices in the face.
+    for (usize v = 0; v < vertexCount; v++) {
+        // access to vertex
+        tinyobj::index_t idx = shape.mesh.indices[indexOffset + v];
+        if (idx.vertex_index < 0) {
+            VXIO_LOG(ERROR, "Vertex without vertex coordinates found");
+            exit(1);
+        }
+        Vec3 &vertex = triangle.v[v];
+        vertex = Vec3{attrib.vertices.data() + 3 * idx.vertex_index};
+
+        if (idx.texcoord_index >= 0) {
+            triangle.t[v] = Vec2{attrib.texcoords.data() + 2 * idx.texcoord_index};
+        }
+        else {
+            // Even if this value will never be used, it's not good practice to leave it unitialized.
+            // This could lead to accidental denormalized float operations which are expensive.
+            // Remove this line if we ever create a special case for meshes with no UV coordinates.
+            triangle.t[v] = {};
+            hasTexCoords = false;
+        }
+    }
+
+    int materialIndex = shape.mesh.material_ids[faceIndex];
+    if (materialIndex < 0) {
+        if (hasTexCoords && defaultTexture != nullptr) {
+            triangle.type = TriangleType::TEXTURED;
+            triangle.texture = defaultTexture;
+        }
+        else {
+            triangle.type = TriangleType::MATERIALLESS;
+        }
+    }
+    else if (hasTexCoords) {
+        const tinyobj::material_t &material = materials[static_cast<usize>(materialIndex)];
+        const std::string &textureName = material.diffuse_texname;
+        if (textureName.empty()) {
+            goto untextured;
+        }
+        // Even though the voxelizer is detached, this is safe because the voxelizer never modifies its own
+        // textures.
+        auto location = textures.find(textureName);
+        if (location == textures.end()) {
+            VXIO_LOG(ERROR,
+                     "Face with material \"" + material.name + "\" has unloaded texture name \"" + textureName + '"');
+            std::exit(1);
+        }
+        triangle.texture = &location->second;
+        triangle.type = TriangleType::TEXTURED;
+    }
+    else {
+    untextured:
+        Vec3 color{materials[static_cast<usize>(materialIndex)].diffuse};
+        triangle.color = color.cast<float>();
+        triangle.type = TriangleType::UNTEXTURED;
+    }
+
+    indexOffset += vertexCount;
+    ++faceIndex;
+    return triangle;
+}
+
+VisualTriangle StlTriangleStream::next()
+{
+    VisualTriangle result;
+
+    for (usize i = 0; i < 3; ++i) {
+        result.v[i] = Vec3f{vertices.data() + index}.cast<real_type>();
+        result.t[i] = {};
+    }
+    index += 9;
+
+    result.type = TriangleType::MATERIALLESS;
+    return result;
+}
+
+}  // namespace
+
+// FILE LOADING ========================================================================================================
+
+std::unique_ptr<TriangleStream> loadObj(const std::string &inFile, const std::string &textureFile)
 {
     std::string warn;
     std::string err;
 
-    bool tinyobjSuccess = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, inFile.c_str());
+    ObjTriangleStream stream;
+
+    if (not textureFile.empty()) {
+        std::optional<Texture> loadedDefault = loadTexture(textureFile, "-t");
+        if (loadedDefault.has_value()) {
+            auto [location, success] = stream.textures.emplace("", std::move(*loadedDefault));
+            VXIO_ASSERTM(success, "Multiple default textures?!");
+            stream.defaultTexture = &location->second;
+        }
+    }
+
+    bool tinyobjSuccess =
+        tinyobj::LoadObj(&stream.attrib, &stream.shapes, &stream.materials, &warn, &err, inFile.c_str());
     trim(warn);
     trim(err);
 
@@ -73,11 +227,26 @@ bool loadObj(const std::string &inFile,
     if (not err.empty()) {
         VXIO_LOG(ERROR, "TinyOBJ: " + err);
     }
+    if (not tinyobjSuccess) {
+        return nullptr;
+    }
 
-    return tinyobjSuccess;
+    for (tinyobj::material_t &material : stream.materials) {
+        std::string name = material.diffuse_texname;
+        if (name.empty()) {
+            continue;
+        }
+        std::optional<Texture> tex = loadTexture(name, material.name);
+        if (tex.has_value()) {
+            stream.textures.emplace(std::move(name), std::move(*tex));
+        }
+    }
+    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(stream.textures.size()) + " textures");
+
+    return std::make_unique<ObjTriangleStream>(std::move(stream));
 }
 
-std::vector<f32> loadStl(const std::string &inFile)
+std::unique_ptr<TriangleStream> loadStl(const std::string &inFile)
 {
     std::optional<FileInputStream> stream = FileInputStream::open(inFile);
     if (not stream.has_value()) {
@@ -102,7 +271,7 @@ std::vector<f32> loadStl(const std::string &inFile)
         std::exit(1);
     }
 
-    std::vector<f32> result;
+    StlTriangleStream result;
     for (u32 i = 0; i < triangleCount; ++i) {
         f32 triangleData[12];
 
@@ -113,10 +282,10 @@ std::vector<f32> loadStl(const std::string &inFile)
             std::exit(1);
         }
 
-        result.insert(result.end(), triangleData + 3, triangleData + 12);
+        result.vertices.insert(result.vertices.end(), triangleData + 3, triangleData + 12);
     }
 
-    return result;
+    return std::make_unique<StlTriangleStream>(std::move(result));
 }
 
 std::optional<Texture> loadTexture(const std::string &name, const std::string &material)

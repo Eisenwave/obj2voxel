@@ -53,13 +53,23 @@ constexpr real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal)
     return dot(normal, p - org);
 }
 
+template <typename T>
+constexpr WeightedCombineFunction<T> weightedMaxFunction = obj2voxel::max<T>;
+
+template <typename T>
+constexpr WeightedCombineFunction<T> weightedMixFunction = obj2voxel::mix<T>;
+
+template <ColorStrategy STRATEGY, typename T>
+constexpr WeightedCombineFunction<T> combineFunction =
+    STRATEGY == ColorStrategy::MAX ? weightedMaxFunction<T> : weightedMixFunction<T>;
+
 /// Emplaces a weighted type in a map at the given location or combines it with the already value.
 template <ColorStrategy STRATEGY, typename T>
 inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> color)
 {
     auto [location, success] = map.emplace(pos, color);
     if (not success) {
-        location->second = STRATEGY == ColorStrategy::MAX ? max(color, location->second) : mix(color, location->second);
+        location->second = combineFunction<STRATEGY, T>(color, location->second);
     }
 }
 
@@ -67,6 +77,12 @@ constexpr InsertionFunction insertionFunctionOf(ColorStrategy colorStrategy)
 {
     return colorStrategy == ColorStrategy::BLEND ? insertWeighted<ColorStrategy::BLEND, Vec3>
                                                  : insertWeighted<ColorStrategy::MAX, Vec3>;
+}
+
+constexpr WeightedCombineFunction<Vec3f> combineFunctionOf(ColorStrategy colorStrategy)
+{
+    return colorStrategy == ColorStrategy::BLEND ? combineFunction<ColorStrategy::BLEND, Vec3>
+                                                 : combineFunction<ColorStrategy::MAX, Vec3>;
 }
 
 // TRIANGLE SPLITTING ==================================================================================================
@@ -505,34 +521,28 @@ VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy 
 
 // VOXELIZER IMPLEMENTATION ============================================================================================
 
-Voxelizer::Voxelizer(ColorStrategy colorStrategy) : insertionFunction{insertionFunctionOf(colorStrategy)} {}
-
-void Voxelizer::initTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation)
+Voxelizer::Voxelizer(AffineTransform transform, ColorStrategy colorStrategy)
+    : trans{transform}, combineFunction{combineFunctionOf(colorStrategy)}
 {
-    meshMin = min;
-    meshMax = max;
+}
 
+AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation)
+{
     const Vec3 meshSize = max - min;
     const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
     const real_type scaleFactor = (real_type(resolution) - ANTI_BLEED) / maxOfAllAxes;
-    const Vec3 baseTranslation = (-meshMin * scaleFactor) + Vec3::filledWith(ANTI_BLEED / 2);
+    const Vec3 baseTranslation = (-min * scaleFactor) + Vec3::filledWith(ANTI_BLEED / 2);
 
+    AffineTransform result;
     for (usize i = 0; i < 3; ++i) {
-        linearTransform[i] = Vec3::zero();
-        linearTransform[i][permutation[i]] = scaleFactor;
-        translation[i] = baseTranslation[permutation[i]];
-        VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + linearTransform[i].toString());
+        result.matrix[i] = Vec3::zero();
+        result.matrix[i][permutation[i]] = scaleFactor;
+        result.translation[i] = baseTranslation[permutation[i]];
+        VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + result.matrix[i].toString());
     }
 
-    VXIO_LOG(DEBUG, "Mesh translation = " + translation.toString());
-}
-
-Vec3 Voxelizer::transform(Vec3 v)
-{
-    real_type x = dot(linearTransform[0], v);
-    real_type y = dot(linearTransform[1], v);
-    real_type z = dot(linearTransform[2], v);
-    return Vec3{x, y, z} + translation;
+    VXIO_LOG(DEBUG, "Mesh translation = " + result.translation.toString());
+    return result;
 }
 
 void Voxelizer::voxelize(VisualTriangle triangle)
@@ -540,17 +550,31 @@ void Voxelizer::voxelize(VisualTriangle triangle)
     VXIO_ASSERT(uvBuffer.empty());
 
     for (usize i = 0; i < 3; ++i) {
-        triangle.v[i] = transform(triangle.v[i]);
+        triangle.v[i] = trans.apply(triangle.v[i]);
     }
 
-    ++triangleCount;
     obj2voxel::voxelizeTriangle(triangle, buffers, uvBuffer);
     for (auto &[index, weightedUv] : uvBuffer) {
         Vec3u32 pos = uvBuffer.posOf(index);
-        Vec3f color = triangle.colorAt_f(weightedUv.value);
-        this->insertionFunction(voxels, pos, {weightedUv.weight, color});
+        Vec3f colorVec = triangle.colorAt_f(weightedUv.value);
+        WeightedColor color = {weightedUv.weight, colorVec};
+
+        auto [location, success] = voxels_.emplace(pos, color);
+        if (not success) {
+            location->second = this->combineFunction(color, location->second);
+        }
     }
     uvBuffer.clear();
+}
+
+void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source)
+{
+    for (auto &[index, color] : source) {
+        auto [location, success] = target.emplace(index, color);
+        if (not success) {
+            location->second = this->combineFunction(color, location->second);
+        }
+    }
 }
 
 }  // namespace obj2voxel

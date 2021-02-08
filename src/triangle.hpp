@@ -1,5 +1,5 @@
-#ifndef TRIANGLE_HPP
-#define TRIANGLE_HPP
+#ifndef OBJ2VOXEL_TRIANGLE_HPP
+#define OBJ2VOXEL_TRIANGLE_HPP
 
 #include "util.hpp"
 
@@ -179,4 +179,4 @@ struct VisualTriangle : public TexturedTriangle {
 
 }  // namespace obj2voxel
 
-#endif  // TRIANGLE_HPP
+#endif  // OBJ2VOXEL_TRIANGLE_HPP

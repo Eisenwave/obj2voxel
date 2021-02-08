@@ -5,6 +5,8 @@ project(obj2voxel LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+find_package(Threads REQUIRED)
+
 string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
 
 if(build_type STREQUAL DEBUG)
@@ -19,17 +21,20 @@ else()
 endif()
 
 add_executable(obj2voxel
-    main.cpp
-    3rd_party/tinyobj.hpp
-    3rd_party/args.hpp
-    triangle.hpp
-    util.hpp
-    voxelization.cpp
-    voxelization.hpp
-    io.cpp
-    io.hpp)
+    src/main.cpp
+    src/3rd_party/tinyobj.hpp
+    src/3rd_party/args.hpp
+    src/threading.hpp
+    src/triangle.hpp
+    src/util.hpp
+    src/voxelization.cpp
+    src/voxelization.hpp
+    src/filevoxelization.cpp
+    src/filevoxelization.hpp
+    src/io.cpp
+    src/io.hpp)
 
 add_subdirectory(voxelio)
-target_link_libraries(obj2voxel voxelio)
+target_link_libraries(obj2voxel voxelio ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(obj2voxel PUBLIC voxelio/include)

@@ -1,5 +1,5 @@
-#ifndef WEIGHTED_HPP
-#define WEIGHTED_HPP
+#ifndef OBJ2VOXEL_UTIL_HPP
+#define OBJ2VOXEL_UTIL_HPP
 
 #include "3rd_party/tinyobj.hpp"
 
@@ -165,6 +165,9 @@ constexpr Weighted<T> max(const Weighted<T> &lhs, const Weighted<T> &rhs)
     return lhs.weight > rhs.weight ? lhs : rhs;
 }
 
+template <typename T>
+using WeightedCombineFunction = Weighted<T> (*)(const Weighted<T> &, const Weighted<T> &);
+
 // VOXEL MAP ===========================================================================================================
 
 template <typename K, typename V>
@@ -196,8 +199,14 @@ struct VoxelMap : public voxel_map_base_type<u64, T> {
     {
         return static_cast<base_type *>(this)->emplace(indexOf(pos), std::forward<V>(value));
     }
+
+    template <typename V>
+    std::pair<iterator, bool> emplace(u64 index, V &&value)
+    {
+        return static_cast<base_type *>(this)->emplace(index, std::forward<V>(value));
+    }
 };
 
 }  // namespace obj2voxel
 
-#endif  // WEIGHTED_HPP
+#endif  // OBJ2VOXEL_UTIL_HPP

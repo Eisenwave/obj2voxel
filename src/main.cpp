@@ -1,8 +1,9 @@
+#include "filevoxelization.hpp"
 #include "io.hpp"
-#include "voxelization.hpp"
 
 #include "3rd_party/args.hpp"
 
+#include "voxelio/filetype.hpp"
 #include "voxelio/parse.hpp"
 #include "voxelio/stream.hpp"
 #include "voxelio/stringmanip.hpp"
@@ -16,6 +17,7 @@
 
 // comment out when building
 //#define OBJ2VOXEL_DUMP_STL
+//#define OBJ2VOXEL_MANUAL_TEST
 
 // tinobj implementation must be included last because it is alos included by voxelization.hpp (but no implementation)
 #define TINYOBJLOADER_IMPLEMENTATION 1
@@ -35,181 +37,17 @@ namespace {
 
 using namespace voxelio;
 
-struct VoxelizationArgs {
-    std::string inFile;
-    std::string texture;
-    unsigned resolution;
-    ColorStrategy colorStrategy;
-    Vec3u permutation;
-};
-
-VoxelMap<WeightedColor> voxelizeObj(VoxelizationArgs args)
-{
-    // Load obj model
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-
-    if (not loadObj(args.inFile, attrib, shapes, materials)) {
-        std::exit(1);
-    }
-    if (attrib.vertices.empty()) {
-        VXIO_LOG(WARNING, "Model has no vertices, aborting and writing empty voxel model");
-        return {};
-    }
-    VXIO_LOG(INFO, "Loaded OBJ model with " + stringifyLargeInt(attrib.vertices.size() / 3) + " vertices");
-
-    // Determine mesh to voxel space transform
-
-    Vec3 meshMin, meshMax;
-    findBoundaries(attrib.vertices, meshMin, meshMax);
-
-    Voxelizer voxelizer{args.colorStrategy};
-    voxelizer.initTransform(meshMin, meshMax, args.resolution, args.permutation);
-
-    // Load textures
-    Texture *defaultTexture = nullptr;
-    if (not args.texture.empty()) {
-        std::optional<Texture> loadedDefault = loadTexture(args.texture, "-t");
-        if (loadedDefault.has_value()) {
-            auto [location, success] = voxelizer.textures.emplace("", std::move(*loadedDefault));
-            VXIO_ASSERTM(success, "Multiple default textures?!");
-            defaultTexture = &location->second;
-        }
-    }
-    for (tinyobj::material_t &material : materials) {
-        std::string name = material.diffuse_texname;
-        if (name.empty()) {
-            continue;
-        }
-        std::optional<Texture> tex = loadTexture(name, material.name);
-        if (tex.has_value()) {
-            voxelizer.textures.emplace(std::move(name), std::move(*tex));
-        }
-    }
-    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(voxelizer.textures.size()) + " textures");
-
-    // Loop over shapes
-    for (usize s = 0; s < shapes.size(); s++) {
-        tinyobj::shape_t &shape = shapes[s];
-
-        // Loop over faces(polygon)
-        usize index_offset = 0;
-        for (usize f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            usize vertexCount = shape.mesh.num_face_vertices[f];
-            VXIO_DEBUG_ASSERT_EQ(vertexCount, 3);
-
-            VisualTriangle triangle;
-            bool hasTexCoords = true;
-
-            // Loop over vertices in the face.
-            for (usize v = 0; v < vertexCount; v++) {
-                // access to vertex
-                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
-                if (idx.vertex_index < 0) {
-                    VXIO_LOG(ERROR, "Vertex without vertex coordinates found");
-                    exit(1);
-                }
-                Vec3 &vertex = triangle.v[v];
-                vertex = Vec3{attrib.vertices.data() + 3 * idx.vertex_index};
-
-                if (idx.texcoord_index >= 0) {
-                    triangle.t[v] = Vec2{attrib.texcoords.data() + 2 * idx.texcoord_index};
-                }
-                else {
-                    // Even if this value will never be used, it's not good practice to leave it unitialized.
-                    // This could lead to accidental denormalized float operations which are expensive.
-                    // Remove this line if we ever create a special case for meshes with no UV coordinates.
-                    triangle.t[v] = {};
-                    hasTexCoords = false;
-                }
-            }
-            index_offset += vertexCount;
-
-            int materialIndex = shape.mesh.material_ids[f];
-            if (materialIndex < 0) {
-                if (hasTexCoords && defaultTexture != nullptr) {
-                    triangle.type = TriangleType::TEXTURED;
-                    triangle.texture = defaultTexture;
-                }
-                else {
-                    triangle.type = TriangleType::MATERIALLESS;
-                }
-            }
-            else if (hasTexCoords) {
-                const tinyobj::material_t &material = materials[static_cast<usize>(materialIndex)];
-                const std::string &textureName = material.diffuse_texname;
-                if (textureName.empty()) {
-                    goto untextured;
-                }
-                auto location = voxelizer.textures.find(textureName);
-                if (location == voxelizer.textures.end()) {
-                    VXIO_LOG(ERROR,
-                             "Face with material \"" + material.name + "\" has unloaded texture name \"" + textureName +
-                                 '"');
-                    std::exit(1);
-                }
-                triangle.texture = &location->second;
-                triangle.type = TriangleType::TEXTURED;
-            }
-            else {
-            untextured:
-                Vec3 color{materials[static_cast<usize>(materialIndex)].diffuse};
-                triangle.color = color.cast<float>();
-                triangle.type = TriangleType::UNTEXTURED;
-            }
-
-            voxelizer.voxelize(triangle);
-        }
-    }
-    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(voxelizer.triangleCount) + " triangles");
-
-    return std::move(voxelizer.voxels);
-}
-
-VoxelMap<WeightedColor> voxelizeStl(VoxelizationArgs args)
-{
-    std::vector<f32> stl = loadStl(args.inFile);
-
-    VXIO_LOG(INFO, "Loaded STL model with " + stringifyLargeInt(stl.size() / 3) + " vertices");
-
-    Voxelizer voxelizer{args.colorStrategy};
-
-    {
-        Vec3 meshMin, meshMax;
-        findBoundaries(stl, meshMin, meshMax);
-        voxelizer.initTransform(meshMin, meshMax, args.resolution, args.permutation);
-    }
-
-    f32 *data = stl.data();
-
-    VXIO_ASSERT(stl.size() % 9 == 0);
-    for (usize i = 0; i < stl.size(); i += 9) {
-        VisualTriangle triangle;
-
-        for (usize i = 0; i < 3; ++i) {
-            triangle.v[i] = Vec3f{data}.cast<real_type>();
-            data += 3;
-            triangle.t[i] = {};
-        }
-
-        triangle.type = TriangleType::MATERIALLESS;
-
-        voxelizer.voxelize(std::move(triangle));
-    }
-
-    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(voxelizer.triangleCount) + " triangles");
-
-    return std::move(voxelizer.voxels);
-}
+constexpr bool DEFAULT_SUPERSAMPLE = false;
+constexpr ColorStrategy DEFAULT_COLOR_STRATEGY = ColorStrategy::MAX;
+constexpr Vec3u DEFAULT_PERMUTATION = {0, 1, 2};
 
 int mainImpl(std::string inFile,
              std::string outFile,
-             std::string textureFile,
              unsigned resolution,
-             bool supersample,
-             ColorStrategy colorStrategy,
-             Vec3u permutation)
+             std::string textureFile = "",
+             bool supersample = DEFAULT_SUPERSAMPLE,
+             ColorStrategy colorStrategy = DEFAULT_COLOR_STRATEGY,
+             Vec3u permutation = DEFAULT_PERMUTATION)
 {
     VXIO_LOG(INFO,
              "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringifyLargeInt(resolution) +
@@ -261,7 +99,9 @@ int mainImpl(std::string inFile,
     args.colorStrategy = colorStrategy;
     args.permutation = permutation;
 
-    VoxelMap<WeightedColor> voxels = *inType == FileType::WAVEFRONT_OBJ ? voxelizeObj(args) : voxelizeStl(args);
+    VoxelizationFunction voxelizeFunction = *inType == FileType::WAVEFRONT_OBJ ? voxelizeObj : voxelizeStl;
+
+    VoxelMap<WeightedColor> voxels = voxelizeFunction(args);
 
 #ifdef OBJ2VOXEL_DUMP_STL
     dumpDebugStl("/tmp/obj2voxel_debug.stl");
@@ -277,8 +117,16 @@ int mainImpl(std::string inFile,
     return not success;
 }
 
-bool parsePermutation(std::string str, Vec3u &out)
+// CLI ARGUMENT PARSING ================================================================================================
+
+}  // namespace
+}  // namespace obj2voxel
+
+#ifndef OBJ2VOXEL_MANUAL_TEST
+static bool parsePermutation(std::string str, voxelio::Vec3u &out)
 {
+    using namespace voxelio;
+
     if (str.size() != 3) {
         return false;
     }
@@ -297,9 +145,6 @@ bool parsePermutation(std::string str, Vec3u &out)
     return found[0] + found[1] + found[2] == 3;
 }
 
-}  // namespace
-}  // namespace obj2voxel
-
 constexpr const char *HEADER = "obj2voxel - OBJ and STL voxelizer";
 constexpr const char *FOOTER = "Visit at https://github.com/eisenwave/obj2voxel";
 constexpr const char *HELP_DESCR = "Display this help menu.";
@@ -317,6 +162,9 @@ constexpr const char *SS_DESCR =
     "The model is voxelized at double resolution and then downscaled while combining colors.";
 
 int main(int argc, char **argv)
+#else
+int main()
+#endif
 {
     using namespace obj2voxel;
 
@@ -325,6 +173,9 @@ int main(int argc, char **argv)
         VXIO_LOG(DEBUG, "Running debug build");
     }
 
+#ifdef OBJ2VOXEL_MANUAL_TEST
+    return mainImpl("//home/user/assets/mesh/sword/sword.obj", "/home/user/assets/mesh/sword/sword_64.vl32", 64);
+#else
     const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
                                                                      {"blend", ColorStrategy::BLEND}};
 
@@ -341,7 +192,7 @@ int main(int argc, char **argv)
     args::Group vgroup(parser, "Voxelization Options:");
     args::ValueFlag<unsigned> resolutionArg(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
     args::MapFlag<std::string, ColorStrategy> strategyArg(
-        vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, ColorStrategy::MAX);
+        vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, DEFAULT_COLOR_STRATEGY);
     args::ValueFlag<std::string> permutationArg(vgroup, "permutation", PERMUTATION_ARG, {'p'}, "xyz");
     args::Flag ssArg(vgroup, "supersample", SS_DESCR, {'u'});
 
@@ -365,9 +216,10 @@ int main(int argc, char **argv)
 
     mainImpl(std::move(inFileArg.Get()),
              std::move(outFileArg.Get()),
-             std::move(textureArg.Get()),
              resolutionArg.Get(),
+             std::move(textureArg.Get()),
              ssArg.Get(),
              strategyArg.Get(),
              permutation);
+#endif
 }
