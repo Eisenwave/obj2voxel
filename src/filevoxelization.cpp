@@ -12,7 +12,14 @@ namespace obj2voxel {
 
 namespace {
 
-enum class CommandType { VOXELIZE_TRIANGLE, MERGE_MAPS, EXIT };
+enum class CommandType {
+    /// Instructs a worker thread to voxelize a triangle.
+    VOXELIZE_TRIANGLE,
+    /// Instructs a worker thread to merge two voxel maps and clear the source map.
+    MERGE_MAPS,
+    /// Instructs a worker to exit.
+    EXIT
+};
 
 struct WorkerCommand {
     static WorkerCommand exit()
@@ -83,6 +90,9 @@ class WorkerThread final
     : public Voxelizer
     , public std::thread {
 public:
+// we ignore warnings because emplace() calls below don't detect the usage of the constructor
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-member-function"
     WorkerThread(AffineTransform meshTransform, ColorStrategy colorStrat, CommandQueue &queue)
         : Voxelizer{meshTransform, colorStrat}, std::thread{&WorkerThread::run, this, std::ref(queue)}
     {
@@ -90,6 +100,7 @@ public:
 
     WorkerThread(const WorkerThread &) = delete;
     WorkerThread(WorkerThread &&) = default;
+#pragma clang diagnostic pop
 
 private:
     void run(CommandQueue &queue);
@@ -197,8 +208,6 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
     }
     VXIO_LOG(INFO, "Loaded model with " + stringifyLargeInt(stream.vertexCount()) + " vertices");
 
-    // Determine mesh to voxel space transform
-
     CommandQueue queue;
 
     usize totalTriangleCount = 0;
@@ -208,10 +217,10 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
     findBoundaries(stream.vertexBegin(), stream.vertexCount(), meshMin, meshMax);
     AffineTransform meshTransform = Voxelizer::computeTransform(meshMin, meshMax, args.resolution, args.permutation);
 
-    std::vector<WorkerThread> voxelizers;
-    voxelizers.reserve(threadCount);
+    std::vector<WorkerThread> workers;
+    workers.reserve(threadCount);
     for (usize i = 0; i < threadCount; ++i) {
-        auto &voxelizer = voxelizers.emplace_back(meshTransform, args.colorStrategy, queue);
+        auto &voxelizer = workers.emplace_back(meshTransform, args.colorStrategy, queue);
         VXIO_ASSERT(voxelizer.joinable());
     }
 
@@ -226,9 +235,9 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
 
     VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(totalTriangleCount) + " triangles, merging results ...");
 
-    VoxelMap<WeightedColor> result = mergeVoxelMaps(voxelizers, queue);
+    VoxelMap<WeightedColor> result = mergeVoxelMaps(workers, queue);
 
-    joinWorkers(voxelizers, queue);
+    joinWorkers(workers, queue);
 
     if (args.downscale) {
         VXIO_LOG(INFO,

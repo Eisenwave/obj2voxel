@@ -207,6 +207,23 @@ struct VoxelMap : public voxel_map_base_type<u64, T> {
     }
 };
 
+// AFFINE TRANSFORM ====================================================================================================
+
+struct AffineTransform {
+    using vec_type = Vec<real_type, 3>;
+
+    vec_type matrix[3];
+    vec_type translation;
+
+    constexpr vec_type apply(vec_type v) const
+    {
+        real_type x = dot(matrix[0], v);
+        real_type y = dot(matrix[1], v);
+        real_type z = dot(matrix[2], v);
+        return vec_type{x, y, z} + translation;
+    }
+};
+
 }  // namespace obj2voxel
 
 #endif  // OBJ2VOXEL_UTIL_HPP

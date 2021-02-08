@@ -47,8 +47,6 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
     return false;
 }
 
-using InsertionFunction = void (*)(VoxelMap<WeightedColor> &, Vec3u, WeightedColor);
-
 /**
  * @brief Scales down a map of voxels to a lower resolution and combines multiple colors into one using the given
  * strategy.
@@ -58,19 +56,6 @@ using InsertionFunction = void (*)(VoxelMap<WeightedColor> &, Vec3u, WeightedCol
  * @return the downscaled model
  */
 VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy strategy, unsigned divisor = 2);
-
-struct AffineTransform {
-    Vec3 matrix[3];
-    Vec3 translation;
-
-    constexpr Vec3 apply(Vec3 v) const
-    {
-        real_type x = dot(matrix[0], v);
-        real_type y = dot(matrix[1], v);
-        real_type z = dot(matrix[2], v);
-        return Vec3{x, y, z} + translation;
-    }
-};
 
 /// Throwaway class which manages all necessary data structures for voxelization and simplifies the procedure from the
 /// caller's side to just using voxelize(triangle).

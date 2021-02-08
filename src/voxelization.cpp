@@ -73,6 +73,8 @@ inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> co
     }
 }
 
+using InsertionFunction = decltype(&insertWeighted<ColorStrategy::BLEND, Vec3>);
+
 constexpr InsertionFunction insertionFunctionOf(ColorStrategy colorStrategy)
 {
     return colorStrategy == ColorStrategy::BLEND ? insertWeighted<ColorStrategy::BLEND, Vec3>
