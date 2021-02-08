@@ -46,36 +46,45 @@ struct WorkerCommand {
     constexpr WorkerCommand() : type{CommandType::EXIT}, nothing{nullptr} {}
 };
 
-using ring_buffer_type = async::RingBuffer<WorkerCommand, 128>;
-using counter_type = async::Counter<uintmax_t>;
-using texture_map_type = std::map<std::string, Texture>;
+/// Thread-safe queue of worker commands.
+class CommandQueue {
+private:
+    async::RingBuffer<WorkerCommand, 128> buffer;
+    async::Counter<uintmax_t> commandCounter;
 
-template <typename Float>
-void findBoundaries(const float data[], usize vertexCount, Vec<Float, 3> &outMin, Vec<Float, 3> &outMax)
-{
-    Vec<Float, 3> min = {data[0], data[1], data[2]};
-    Vec<Float, 3> max = min;
-
-    usize limit = vertexCount * 3;
-    for (size_t i = 0; i < limit; i += 3) {
-        Vec<Float, 3> p{data + i};
-        min = obj2voxel::min(min, p);
-        max = obj2voxel::max(max, p);
+public:
+    /// Signals completion of one command. To be called by workers.
+    void complete()
+    {
+        --commandCounter;
     }
 
-    outMin = min;
-    outMax = max;
-}
+    /// Receives one command. To be called by workers.
+    WorkerCommand receive()
+    {
+        return buffer.pop();
+    }
+
+    /// Issues a command to workers. To be called by main thread.
+    void issue(WorkerCommand command)
+    {
+        ++commandCounter;
+        buffer.push(std::move(command));
+    }
+
+    /// Waits until all commands have been completed.
+    void waitForCompletion()
+    {
+        commandCounter.waitUntilZero();
+    }
+};
 
 class WorkerThread final
     : public Voxelizer
     , public std::thread {
 public:
-    WorkerThread(AffineTransform meshTransform,
-                 ColorStrategy colorStrat,
-                 ring_buffer_type &commandBuffer,
-                 counter_type &commandCounter)
-        : Voxelizer{meshTransform, colorStrat}, std::thread{&WorkerThread::run, this, &commandBuffer, &commandCounter}
+    WorkerThread(AffineTransform meshTransform, ColorStrategy colorStrat, CommandQueue &queue)
+        : Voxelizer{meshTransform, colorStrat}, std::thread{&WorkerThread::run, this, std::ref(queue)}
     {
     }
 
@@ -83,18 +92,15 @@ public:
     WorkerThread(WorkerThread &&) = default;
 
 private:
-    void run(ring_buffer_type *commandBuffer, counter_type *commandCounter);
+    void run(CommandQueue &queue);
 };
 
-void WorkerThread::run(ring_buffer_type *commandBuffer, counter_type *commandCounter)
+void WorkerThread::run(CommandQueue &queue)
 {
-    VXIO_DEBUG_ASSERT_NOTNULL(commandBuffer);
-    VXIO_DEBUG_ASSERT_NOTNULL(commandCounter);
-
     VXIO_LOG(DEBUG, "VoxelizerThread " + stringify(get_id()) + " started");
     bool looping = true;
     do {
-        WorkerCommand command = commandBuffer->pop();
+        WorkerCommand command = queue.receive();
         switch (command.type) {
         case CommandType::VOXELIZE_TRIANGLE: {
             this->voxelize(std::move(command.triangle));
@@ -114,17 +120,15 @@ void WorkerThread::run(ring_buffer_type *commandBuffer, counter_type *commandCou
             break;
         }
         }
-        commandCounter->operator--();
+        queue.complete();
     } while (looping);
 }
 
-VoxelMap<WeightedColor> mergeVoxelMaps(std::vector<WorkerThread> &threads,
-                                       ring_buffer_type &commandBuffer,
-                                       counter_type &commandCounter)
+VoxelMap<WeightedColor> mergeVoxelMaps(std::vector<WorkerThread> &threads, CommandQueue &queue)
 {
     while (true) {
         VoxelMap<WeightedColor> *mergeTarget = nullptr, *mergeSource = nullptr;
-        usize commandsIssuedInLoop = 0;
+        usize commandsIssued = 0;
 
         for (auto &voxelizer : threads) {
             if (voxelizer.voxels().empty()) {
@@ -141,29 +145,45 @@ VoxelMap<WeightedColor> mergeVoxelMaps(std::vector<WorkerThread> &threads,
                 if (mergeTarget->size() < mergeSource->size()) {
                     std::swap(mergeTarget, mergeSource);
                 }
-                ++commandsIssuedInLoop;
-                ++commandCounter;
-                commandBuffer.push(WorkerCommand{mergeTarget, mergeSource});
+                ++commandsIssued;
+                queue.issue(WorkerCommand{mergeTarget, mergeSource});
                 mergeTarget = mergeSource = nullptr;
             }
         }
 
-        if (commandsIssuedInLoop == 0) {
+        if (commandsIssued == 0) {
             return mergeTarget == nullptr ? VoxelMap<WeightedColor>() : std::move(*mergeTarget);
         }
 
-        commandCounter.waitUntilZero();
+        queue.waitForCompletion();
     }
 }
 
-void joinWorkers(std::vector<WorkerThread> &threads, ring_buffer_type &commandBuffer)
+void joinWorkers(std::vector<WorkerThread> &threads, CommandQueue &queue)
 {
     for (usize i = 0; i < threads.size(); ++i) {
-        commandBuffer.push(WorkerCommand::exit());
+        queue.issue(WorkerCommand::exit());
     }
     for (auto &worker : threads) {
         worker.join();
     }
+}
+
+template <typename Float>
+void findBoundaries(const float data[], usize vertexCount, Vec<Float, 3> &outMin, Vec<Float, 3> &outMax)
+{
+    Vec<Float, 3> min = {data[0], data[1], data[2]};
+    Vec<Float, 3> max = min;
+
+    usize limit = vertexCount * 3;
+    for (size_t i = 0; i < limit; i += 3) {
+        Vec<Float, 3> p{data + i};
+        min = obj2voxel::min(min, p);
+        max = obj2voxel::max(max, p);
+    }
+
+    outMin = min;
+    outMax = max;
 }
 
 }  // namespace
@@ -179,8 +199,7 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
 
     // Determine mesh to voxel space transform
 
-    ring_buffer_type commandBuffer;
-    counter_type commandCounter;
+    CommandQueue queue;
 
     usize totalTriangleCount = 0;
     usize threadCount = std::thread::hardware_concurrency();
@@ -192,26 +211,24 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
     std::vector<WorkerThread> voxelizers;
     voxelizers.reserve(threadCount);
     for (usize i = 0; i < threadCount; ++i) {
-        auto &voxelizer = voxelizers.emplace_back(meshTransform, args.colorStrategy, commandBuffer, commandCounter);
+        auto &voxelizer = voxelizers.emplace_back(meshTransform, args.colorStrategy, queue);
         VXIO_ASSERT(voxelizer.joinable());
     }
 
     // Loop over shapes
     while (stream.hasNext()) {
-        ++commandCounter;
         ++totalTriangleCount;
-        commandBuffer.push(WorkerCommand{stream.next()});
+        queue.issue(WorkerCommand{stream.next()});
     }
     VXIO_LOG(DEBUG, "Pushed all triangles, waiting until buffer is empty");
 
-    // We first wait until all remaining triangles have been voxelized.
-    commandCounter.waitUntilZero();
+    queue.waitForCompletion();
 
     VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(totalTriangleCount) + " triangles, merging results ...");
 
-    VoxelMap<WeightedColor> result = mergeVoxelMaps(voxelizers, commandBuffer, commandCounter);
+    VoxelMap<WeightedColor> result = mergeVoxelMaps(voxelizers, queue);
 
-    joinWorkers(voxelizers, commandBuffer);
+    joinWorkers(voxelizers, queue);
 
     if (args.downscale) {
         VXIO_LOG(INFO,
