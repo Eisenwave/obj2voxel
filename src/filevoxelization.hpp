@@ -1,6 +1,7 @@
 #ifndef OBJ2VOXEL_FILEVOXELIZATION_HPP
 #define OBJ2VOXEL_FILEVOXELIZATION_HPP
 
+#include "io.hpp"
 #include "voxelization.hpp"
 
 #include <string>
@@ -11,15 +12,14 @@ struct VoxelizationArgs {
     std::string inFile;
     std::string texture;
     unsigned resolution;
+    bool downscale;
     ColorStrategy colorStrategy;
     Vec3u permutation;
 };
 
 using VoxelizationFunction = VoxelMap<WeightedColor> (*)(VoxelizationArgs);
 
-VoxelMap<WeightedColor> voxelizeObj(VoxelizationArgs args);
-
-VoxelMap<WeightedColor> voxelizeStl(VoxelizationArgs args);
+[[nodiscard]] bool voxelize(VoxelizationArgs args, ITriangleStream &in, VoxelSink &out);
 
 }  // namespace obj2voxel
 

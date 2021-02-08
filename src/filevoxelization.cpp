@@ -118,11 +118,62 @@ void WorkerThread::run(ring_buffer_type *commandBuffer, counter_type *commandCou
     } while (looping);
 }
 
-VoxelMap<WeightedColor> voxelizeTriangles(VoxelizationArgs args, TriangleStream &stream)
+VoxelMap<WeightedColor> mergeVoxelMaps(std::vector<WorkerThread> &threads,
+                                       ring_buffer_type &commandBuffer,
+                                       counter_type &commandCounter)
+{
+    while (true) {
+        VoxelMap<WeightedColor> *mergeTarget = nullptr, *mergeSource = nullptr;
+        usize commandsIssuedInLoop = 0;
+
+        for (auto &voxelizer : threads) {
+            if (voxelizer.voxels().empty()) {
+                continue;
+            }
+
+            if (mergeTarget == nullptr) {
+                mergeTarget = &voxelizer.voxels();
+                continue;
+            }
+            else {
+                mergeSource = &voxelizer.voxels();
+
+                if (mergeTarget->size() < mergeSource->size()) {
+                    std::swap(mergeTarget, mergeSource);
+                }
+                ++commandsIssuedInLoop;
+                ++commandCounter;
+                commandBuffer.push(WorkerCommand{mergeTarget, mergeSource});
+                mergeTarget = mergeSource = nullptr;
+            }
+        }
+
+        if (commandsIssuedInLoop == 0) {
+            return mergeTarget == nullptr ? VoxelMap<WeightedColor>() : std::move(*mergeTarget);
+        }
+
+        commandCounter.waitUntilZero();
+    }
+}
+
+void joinWorkers(std::vector<WorkerThread> &threads, ring_buffer_type &commandBuffer)
+{
+    for (usize i = 0; i < threads.size(); ++i) {
+        commandBuffer.push(WorkerCommand::exit());
+    }
+    for (auto &worker : threads) {
+        worker.join();
+    }
+}
+
+}  // namespace
+
+bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
 {
     if (stream.vertexCount() == 0) {
         VXIO_LOG(WARNING, "Model has no vertices, aborting and writing empty voxel model");
-        return {};
+        sink.flush();
+        return true;
     }
     VXIO_LOG(INFO, "Loaded model with " + stringifyLargeInt(stream.vertexCount()) + " vertices");
 
@@ -158,75 +209,33 @@ VoxelMap<WeightedColor> voxelizeTriangles(VoxelizationArgs args, TriangleStream 
 
     VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(totalTriangleCount) + " triangles, merging results ...");
 
-    VoxelMap<WeightedColor> result;
+    VoxelMap<WeightedColor> result = mergeVoxelMaps(voxelizers, commandBuffer, commandCounter);
 
-    while (true) {
-        VoxelMap<WeightedColor> *mergeTarget = nullptr, *mergeSource = nullptr;
-        usize commandsIssuedInLoop = 0;
+    joinWorkers(voxelizers, commandBuffer);
 
-        for (auto &voxelizer : voxelizers) {
-            if (voxelizer.voxels().empty()) {
-                continue;
-            }
+    if (args.downscale) {
+        VXIO_LOG(INFO,
+                 "Downscaling from " + stringifyLargeInt(args.resolution) + " to output resolution " +
+                     stringifyLargeInt(args.resolution / 2) + " ...")
+        result = downscale(result, args.colorStrategy);
+    }
 
-            if (mergeTarget == nullptr) {
-                mergeTarget = &voxelizer.voxels();
-                continue;
-            }
-            else {
-                mergeSource = &voxelizer.voxels();
+    VXIO_LOG(INFO, "Writing voxels to disk ...");
 
-                if (mergeTarget->size() < mergeSource->size()) {
-                    std::swap(mergeTarget, mergeSource);
-                }
-                ++commandsIssuedInLoop;
-                ++commandCounter;
-                commandBuffer.push(WorkerCommand{mergeTarget, mergeSource});
-                mergeTarget = mergeSource = nullptr;
-            }
+    for (auto &[index, color] : result) {
+        if (not sink.canWrite()) {
+            VXIO_LOG(ERROR, "No more voxels can be written after I/O error, aborting ...");
+            return false;
         }
 
-        if (commandsIssuedInLoop == 0) {
-            if (mergeTarget != nullptr) {
-                result = std::move(*mergeTarget);
-            }
-            break;
-        }
-        commandCounter.waitUntilZero();
+        Voxel32 voxel;
+        voxel.pos = result.posOf(index).cast<i32>();
+        voxel.argb = Color32{color.value.x(), color.value.y(), color.value.z()};
+
+        sink.write(voxel);
     }
 
-    for (usize i = 0; i < voxelizers.size(); ++i) {
-        commandBuffer.push(WorkerCommand::exit());
-    }
-    for (auto &worker : voxelizers) {
-        worker.join();
-    }
-
-    return result;
-}
-
-}  // namespace
-
-// FILE SPECIFICS ======================================================================================================
-
-VoxelMap<WeightedColor> voxelizeObj(VoxelizationArgs args)
-{
-    std::unique_ptr<TriangleStream> stream = loadObj(args.inFile, args.texture);
-    if (stream == nullptr) {
-        std::exit(1);
-    }
-
-    return voxelizeTriangles(std::move(args), *stream);
-}
-
-VoxelMap<WeightedColor> voxelizeStl(VoxelizationArgs args)
-{
-    std::unique_ptr<TriangleStream> stream = loadStl(args.inFile);
-    if (stream == nullptr) {
-        std::exit(1);
-    }
-
-    return voxelizeTriangles(std::move(args), *stream);
+    return true;
 }
 
 }  // namespace obj2voxel

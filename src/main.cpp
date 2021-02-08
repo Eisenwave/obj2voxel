@@ -96,25 +96,21 @@ int mainImpl(std::string inFile,
     args.inFile = std::move(inFile);
     args.texture = std::move(textureFile);
     args.resolution = resolution * (1 + supersample);
+    args.downscale = supersample;
     args.colorStrategy = colorStrategy;
     args.permutation = permutation;
 
-    VoxelizationFunction voxelizeFunction = *inType == FileType::WAVEFRONT_OBJ ? voxelizeObj : voxelizeStl;
+    std::unique_ptr<ITriangleStream> triangles =
+        *inType == FileType::WAVEFRONT_OBJ ? loadObj(args.inFile, args.texture) : loadStl(args.inFile);
+    VoxelSink sink{*outStream, *outType, resolution};
 
-    VoxelMap<WeightedColor> voxels = voxelizeFunction(args);
+    int resultCode = not voxelize(args, *triangles, sink);
 
 #ifdef OBJ2VOXEL_DUMP_STL
     dumpDebugStl("/tmp/obj2voxel_debug.stl");
 #endif
 
-    if (supersample) {
-        voxels = downscale(voxels, colorStrategy);
-    }
-
-    VXIO_LOG(INFO, "Model was voxelized, writing voxels to disk ...");
-    bool success = writeMapWithVoxelio(voxels, resolution, *outType, *outStream);
-
-    return not success;
+    return resultCode;
 }
 
 // CLI ARGUMENT PARSING ================================================================================================

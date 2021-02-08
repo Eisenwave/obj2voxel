@@ -56,7 +56,7 @@ void dumpDebugStl(const std::string &path)
 
 namespace {
 
-struct ObjTriangleStream : public TriangleStream {
+struct ObjTriangleStream final : public ITriangleStream {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -85,7 +85,7 @@ struct ObjTriangleStream : public TriangleStream {
     }
 };
 
-struct StlTriangleStream : public TriangleStream {
+struct StlTriangleStream final : public ITriangleStream {
     std::vector<f32> vertices;
     usize index = 0;
 
@@ -121,10 +121,7 @@ VisualTriangle ObjTriangleStream::next()
     for (usize v = 0; v < vertexCount; v++) {
         // access to vertex
         tinyobj::index_t idx = shape.mesh.indices[indexOffset + v];
-        if (idx.vertex_index < 0) {
-            VXIO_LOG(ERROR, "Vertex without vertex coordinates found");
-            exit(1);
-        }
+        VXIO_ASSERTM(idx.vertex_index >= 0, "Vertex without vertex coordinates found");
         Vec3 &vertex = triangle.v[v];
         vertex = Vec3{attrib.vertices.data() + 3 * idx.vertex_index};
 
@@ -132,16 +129,17 @@ VisualTriangle ObjTriangleStream::next()
             triangle.t[v] = Vec2{attrib.texcoords.data() + 2 * idx.texcoord_index};
         }
         else {
-            // Even if this value will never be used, it's not good practice to leave it unitialized.
+            // Even if this value will never be used by untexture materials, we initialize it.
             // This could lead to accidental denormalized float operations which are expensive.
-            // Remove this line if we ever create a special case for meshes with no UV coordinates.
             triangle.t[v] = {};
             hasTexCoords = false;
         }
     }
 
-    int materialIndex = shape.mesh.material_ids[faceIndex];
-    if (materialIndex < 0) {
+    const int materialIndex = shape.mesh.material_ids[faceIndex];
+    const tinyobj::material_t *material = materialIndex < 0 ? nullptr : &materials[static_cast<usize>(materialIndex)];
+
+    if (material == nullptr) {
         if (hasTexCoords && defaultTexture != nullptr) {
             triangle.type = TriangleType::TEXTURED;
             triangle.texture = defaultTexture;
@@ -151,26 +149,19 @@ VisualTriangle ObjTriangleStream::next()
         }
     }
     else if (hasTexCoords) {
-        const tinyobj::material_t &material = materials[static_cast<usize>(materialIndex)];
-        const std::string &textureName = material.diffuse_texname;
+        const std::string &textureName = material->diffuse_texname;
         if (textureName.empty()) {
             goto untextured;
         }
-        // Even though the voxelizer is detached, this is safe because the voxelizer never modifies its own
-        // textures.
         auto location = textures.find(textureName);
-        if (location == textures.end()) {
-            VXIO_LOG(ERROR,
-                     "Face with material \"" + material.name + "\" has unloaded texture name \"" + textureName + '"');
-            std::exit(1);
-        }
+        VXIO_ASSERTM(location != textures.end(),
+                     "Face with material \"" + material->name + "\" has unloaded texture name \"" + textureName + '"');
         triangle.texture = &location->second;
         triangle.type = TriangleType::TEXTURED;
     }
     else {
     untextured:
-        Vec3 color{materials[static_cast<usize>(materialIndex)].diffuse};
-        triangle.color = color.cast<float>();
+        triangle.color = Vec3{material->diffuse}.cast<float>();
         triangle.type = TriangleType::UNTEXTURED;
     }
 
@@ -197,7 +188,7 @@ VisualTriangle StlTriangleStream::next()
 
 // FILE LOADING ========================================================================================================
 
-std::unique_ptr<TriangleStream> loadObj(const std::string &inFile, const std::string &textureFile)
+std::unique_ptr<ITriangleStream> loadObj(const std::string &inFile, const std::string &textureFile)
 {
     std::string warn;
     std::string err;
@@ -246,29 +237,29 @@ std::unique_ptr<TriangleStream> loadObj(const std::string &inFile, const std::st
     return std::make_unique<ObjTriangleStream>(std::move(stream));
 }
 
-std::unique_ptr<TriangleStream> loadStl(const std::string &inFile)
+std::unique_ptr<ITriangleStream> loadStl(const std::string &inFile)
 {
     std::optional<FileInputStream> stream = FileInputStream::open(inFile);
     if (not stream.has_value()) {
         VXIO_LOG(ERROR, "Failed to open STL file: \"" + inFile + "\"");
-        std::exit(1);
+        return nullptr;
     }
 
     char header[80];
     usize headerSize = stream->read(reinterpret_cast<u8 *>(header), sizeof(header));
     if (headerSize != 80) {
         VXIO_LOG(ERROR, "Binary STL file must start with a header of 80 characters");
-        std::exit(1);
+        return nullptr;
     }
     if (std::string{header, 5} == "solid") {
         VXIO_LOG(ERROR, "The given file is an ASCII STL file which is not supported");
-        std::exit(1);
+        return nullptr;
     }
 
     u32 triangleCount = stream->readLittle<u32>();
     if (not stream->good()) {
         VXIO_LOG(ERROR, "Couldn't read STL triangle count");
-        std::exit(1);
+        return nullptr;
     }
 
     StlTriangleStream result;
@@ -279,7 +270,7 @@ std::unique_ptr<TriangleStream> loadStl(const std::string &inFile)
         stream->readLittle<u16>();
         if (not stream->good()) {
             VXIO_LOG(ERROR, "Unexpected EOF or error when reading triangle");
-            std::exit(1);
+            return nullptr;
         }
 
         result.vertices.insert(result.vertices.end(), triangleData + 3, triangleData + 12);
@@ -314,10 +305,7 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
 
 // OUTPUT ==============================================================================================================
 
-constexpr usize VOXEL_BUFFER_BYTE_SIZE = 8192;
-constexpr usize VOXEL_BUFFER_32_SIZE = VOXEL_BUFFER_BYTE_SIZE / sizeof(Voxel32);
-
-static Voxel32 VOXEL_BUFFER_32[VOXEL_BUFFER_32_SIZE];
+namespace {
 
 AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 {
@@ -330,68 +318,37 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     }
 }
 
-[[nodiscard]] int writeMapWithVoxelio(VoxelMap<WeightedColor> &map,
-                                      usize resolution,
-                                      FileType outFormat,
-                                      FileOutputStream &out)
+}  // namespace
+
+VoxelSink::VoxelSink(OutputStream &out, FileType outFormat, usize resolution)
+    : writer{makeWriter(out, outFormat)}, usePalette{requiresPalette(outFormat)}
 {
-    std::unique_ptr<AbstractListWriter> writer{makeWriter(out, outFormat)};
     writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
 
     const bool usePalette = requiresPalette(outFormat);
     VXIO_LOG(DEBUG, "Writing " + std::string(nameOf(outFormat)) + (usePalette ? " with" : " without") + " palette");
 
-    if (usePalette) {
-        Palette32 &palette = writer->palette();
-        for (auto [pos, color] : map) {
-            palette.insert(Color32{color.value});
-        }
-    }
+    buffer.reserve(BUFFER_SIZE);
+}
 
-    usize voxelCount = 0;
-    usize voxelIndex = 0;
+void VoxelSink::flush()
+{
+    VXIO_ASSERT_CONSEQUENCE(not usePalette, buffer.size() < BUFFER_SIZE);
+    VXIO_ASSERT_CONSEQUENCE(usePalette, buffer.size() == voxelCount);
 
-    const auto flushBuffer = [&writer, &voxelIndex]() -> bool {
-        voxelio::ResultCode writeResult = writer->write(VOXEL_BUFFER_32, voxelIndex);
-        if (not voxelio::isGood(writeResult)) {
-            VXIO_LOG(ERROR, "Flush/Write error: " + informativeNameOf(writeResult));
-            return false;
-        }
-        voxelIndex = 0;
-        return true;
-    };
-
-    for (auto [index, weightedColor] : map) {
-        Vec3u32 pos = map.posOf(index);
-        Color32 color = Color32{weightedColor.value};
-        VOXEL_BUFFER_32[voxelIndex].pos = pos.cast<i32>();
-        if (usePalette) {
-            VOXEL_BUFFER_32[voxelIndex].index = writer->palette().indexOf(color);
-        }
-        else {
-            VOXEL_BUFFER_32[voxelIndex].argb = color;
-        }
-
-        ++voxelCount;
-        if (++voxelIndex == VOXEL_BUFFER_32_SIZE) {
-            if (not flushBuffer()) {
-                return 1;
-            }
-        }
-    };
-
-    VXIO_LOG(DEBUG, "Flushing remaining " + stringify(voxelIndex) + " voxels ...");
     VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
+    VXIO_LOG(DEBUG, "Flushing " + stringify(buffer.size()) + " voxels ...");
 
-    bool finalSuccess = flushBuffer();
-    if (not finalSuccess) {
-        return 1;
+    if (usePalette) {
+        // not strictly necessary but allows us to keep apart init errors and write errors
+        ResultCode initResult = writer->init();
+        VXIO_ASSERTM(voxelio::isGood(initResult), voxelio::informativeNameOf(initResult));
     }
 
-    writer.reset();
-
+    ResultCode writeResult = writer->write(buffer.data(), buffer.size());
+    buffer.clear();
+    VXIO_ASSERTM(voxelio::isGood(writeResult), voxelio::informativeNameOf(writeResult));
     VXIO_LOG(INFO, "Done!");
-    return 0;
 }
 
 }  // namespace obj2voxel

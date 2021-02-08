@@ -4,7 +4,9 @@
 #include "triangle.hpp"
 
 #include "voxelio/filetype.hpp"
+#include "voxelio/log.hpp"
 #include "voxelio/streamfwd.hpp"
+#include "voxelio/voxelio.hpp"
 
 #include <optional>
 #include <vector>
@@ -18,16 +20,100 @@ void writeTriangleAsBinaryToDebugStl(Triangle triangle);
 /// Dumps the debug STL file at the given file path.
 void dumpDebugStl(const std::string &path);
 
-struct TriangleStream {
-    virtual ~TriangleStream() = default;
+/**
+ * @brief A Java-style iterator/stream which can be used to stream through the triangles of a mesh regardless of
+ * internal format.
+ */
+struct ITriangleStream {
+    /// virtual destructor
+    virtual ~ITriangleStream() = default;
+
+    /// Returns the next triangle.
+    /// The behavior of this method is undefined if hasNext() is not true.
     virtual VisualTriangle next() = 0;
+
+    /// Returns true if the stream has at least one more triangle.
     virtual bool hasNext() = 0;
+
+    /// Returns the number of vertices in the inderlying mesh.
     virtual usize vertexCount() = 0;
 
+    /// Returns the begin of the flattened vertex data.
     virtual f32 *vertexBegin() = 0;
 };
 
-std::unique_ptr<TriangleStream> loadObj(const std::string &inFile, const std::string &textureFile);
+/**
+ * @brief A Java-style iterator/stream which can be used to stream through the triangles of a mesh regardless of
+ * internal format.
+ * This stream abstracts from all voxelio specifics such as palettes.
+ *
+ * Only formats that don't use palettes such as VL32 and XYZRGB can be streamed directly to disk.
+ * For other formats like QEF, the full palette must be built before anything can be written.
+ * This results in ALL voxels being dumped into a std::vector until flush() is called.
+ */
+struct VoxelSink {
+private:
+    static constexpr usize BUFFER_SIZE = 8192;
+
+    std::unique_ptr<AbstractListWriter> writer;
+    const bool usePalette;
+    std::vector<Voxel32> buffer;
+    ResultCode err = ResultCode::OK;
+    usize voxelCount = 0;
+
+public:
+    VoxelSink(OutputStream &out, FileType outFormat, usize resolution);
+
+    /// Destroys the sink. This calls flush(), which can fail.
+    /// To avoid errors in the destructor, flush() should be called manually before destruction.
+    ~VoxelSink()
+    {
+        flush();
+    }
+
+    /// Writes a voxel to the sink.
+    void write(Voxel32 buffer);
+
+    /// Returns true if the writer has not encountered any errors yet and the sink can take more voxels.
+    bool canWrite()
+    {
+        return err == ResultCode::OK;
+    }
+
+    /// Flushes the sink.
+    void flush();
+};
+
+// Pulled out of cpp to allow for compiler optimizations.
+inline void VoxelSink::write(Voxel32 voxel)
+{
+    ++voxelCount;
+
+    if (usePalette) {
+        Palette32 &palette = writer->palette();
+        voxel.index = palette.insert(voxel.argb);
+        this->buffer.push_back(std::move(voxel));
+        return;
+    }
+
+    this->buffer.push_back(std::move(voxel));
+    if (this->buffer.size() == BUFFER_SIZE) {
+        voxelio::ResultCode writeResult = writer->write(buffer.data(), buffer.size());
+        this->buffer.clear();
+        if (not voxelio::isGood(writeResult)) {
+            VXIO_LOG(ERROR, "Flush/Write error: " + informativeNameOf(writeResult));
+            err = writeResult;
+        }
+    }
+}
+
+/**
+ * @brief Loads an OBJ file from disk.
+ * @param inFile the input file
+ * @param textureFile the default texture file, to be used for vertices with no material but UV coordinates
+ * @return the OBJ triangle stream or nullptr if the file couldn't be opened
+ */
+std::unique_ptr<ITriangleStream> loadObj(const std::string &inFile, const std::string &textureFile);
 
 /**
  * @brief Loads an STL file from disk.
@@ -35,18 +121,12 @@ std::unique_ptr<TriangleStream> loadObj(const std::string &inFile, const std::st
  * Each nine coordinates in the vector are one triangle.
  * No normals are stored in the vector.
  * @param inFile the input file path
- * @return a list of all vertex coordinates
+ * @return the STL triangle stream or nullptr if the file couldn't be opened
  */
-std::unique_ptr<TriangleStream> loadStl(const std::string &inFile);
+std::unique_ptr<ITriangleStream> loadStl(const std::string &inFile);
 
 /// Loads a texture with the given file name.
 std::optional<Texture> loadTexture(const std::string &name, const std::string &material);
-
-/// Writes a voxel map to disk using the voxelio format of choice.
-[[nodiscard]] int writeMapWithVoxelio(VoxelMap<WeightedColor> &map,
-                                      usize resolution,
-                                      FileType outFormat,
-                                      FileOutputStream &out);
 
 }  // namespace obj2voxel
 
