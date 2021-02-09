@@ -81,15 +81,15 @@ struct Triangle {
     }
 
     /// Returns an inclusive minimum voxel boundary.
-    constexpr Vec3u voxelMin() const
+    constexpr Vec3u32 voxelMin() const
     {
-        return floor(min()).cast<unsigned>();
+        return floor(min()).cast<u32>();
     }
 
     /// Returns an exclusive maximum voxel boundary.
-    constexpr Vec3u voxelMax() const
+    constexpr Vec3u32 voxelMax() const
     {
-        return floor(max()).cast<unsigned>() + Vec3u::one();
+        return floor(max()).cast<u32>() + Vec3u32::one();
     }
 
     /// Returns the area of the triangle.

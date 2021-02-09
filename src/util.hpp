@@ -179,20 +179,20 @@ using voxel_map_base_type = std::map<K, V>;
 
 template <typename T>
 struct VoxelMap : public voxel_map_base_type<u64, T> {
-    using base_type = voxel_map_base_type<u64, T>;
-    using iterator = typename base_type::iterator;
-
-    u64 indexOf(Vec3u32 pos) const
+    static u64 indexOf(Vec3u32 pos)
     {
         return voxelio::ileave3(pos.x(), pos.y(), pos.z());
     }
 
-    Vec3u32 posOf(u64 index) const
+    static Vec3u32 posOf(u64 index)
     {
         Vec3u32 result;
         voxelio::dileave3(index, result.data());
         return result;
     }
+
+    using base_type = voxel_map_base_type<u64, T>;
+    using iterator = typename base_type::iterator;
 
     template <typename V>
     std::pair<iterator, bool> emplace(Vec3u pos, V &&value)

@@ -47,16 +47,6 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
     return false;
 }
 
-/**
- * @brief Scales down a map of voxels to a lower resolution and combines multiple colors into one using the given
- * strategy.
- * @param voxels the input voxels. This map is passed by value and emptied in the process.
- * @param strategy the color strategy for combining voxel colors
- * @param divisor the divisor of the model size
- * @return the downscaled model
- */
-VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy strategy, unsigned divisor = 2);
-
 /// Throwaway class which manages all necessary data structures for voxelization and simplifies the procedure from the
 /// caller's side to just using voxelize(triangle).
 ///
@@ -68,19 +58,18 @@ public:
     static AffineTransform computeTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation);
 
 private:
-    AffineTransform trans;
     std::vector<TexturedTriangle> buffers[3]{};
     VoxelMap<WeightedUv> uvBuffer;
     VoxelMap<WeightedColor> voxels_;
     WeightedCombineFunction<Vec3f> combineFunction;
 
 public:
-    Voxelizer(AffineTransform trans, ColorStrategy colorStrategy);
+    Voxelizer(ColorStrategy colorStrategy);
 
     Voxelizer(const Voxelizer &&) = delete;
     Voxelizer(Voxelizer &&) = default;
 
-    void voxelize(VisualTriangle triangle);
+    void voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max);
 
     void mergeResults(VoxelMap<WeightedColor> &out)
     {
@@ -89,10 +78,32 @@ public:
 
     void merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source);
 
+    /**
+     * @brief Scales down the voxels of the voxelizer to half the original resolution.
+     */
+    void downscale();
+
     VoxelMap<WeightedColor> &voxels()
     {
         return voxels_;
     }
+
+private:
+    /**
+     * @brief Voxelizes a triangle.
+     *
+     * Among the parameters is an array of three buffers.
+     * This array must be notnull.
+     * The contents of the buffers are cleared by the callee, this parameter is only used so that allocation of new
+     * vectors can be avoided for each triangle.
+     *
+     * @param triangle the input triangle to be voxelized
+     * @param buffers three buffers which are used for intermediate operations
+     * @param out the output map of voxel locations to weighted colors
+     */
+    void voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max);
+
+    void consumeUvBuffer(const VisualTriangle &inputTriangle);
 };
 
 }  // namespace obj2voxel

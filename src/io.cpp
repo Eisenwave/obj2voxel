@@ -74,12 +74,12 @@ struct ObjTriangleStream final : public ITriangleStream {
 
     VisualTriangle next() final;
 
-    usize vertexCount() final
+    usize vertexCount() const final
     {
         return attrib.vertices.size() / 3;
     }
 
-    f32 *vertexBegin() final
+    const f32 *vertexBegin() const final
     {
         return attrib.vertices.data();
     }
@@ -96,12 +96,12 @@ struct StlTriangleStream final : public ITriangleStream {
 
     VisualTriangle next() final;
 
-    usize vertexCount() final
+    usize vertexCount() const final
     {
         return vertices.size() / 3;
     }
 
-    f32 *vertexBegin() final
+    const f32 *vertexBegin() const final
     {
         return vertices.data();
     }
@@ -331,23 +331,48 @@ VoxelSink::VoxelSink(OutputStream &out, FileType outFormat, usize resolution)
     buffer.reserve(BUFFER_SIZE);
 }
 
+// Pulled out of cpp to allow for compiler optimizations.
+void VoxelSink::write(Voxel32 voxels[], usize size)
+{
+    voxelCount += size;
+
+    if (usePalette) {
+        Palette32 &palette = writer->palette();
+        for (usize i = 0; i < size; ++i) {
+            Voxel32 &voxel = voxels[i];
+            voxel.index = palette.insert(voxel.argb);
+        }
+        this->buffer.insert(buffer.end(), voxels, voxels + size);
+    }
+    else {
+        voxelio::ResultCode writeResult = writer->write(voxels, size);
+        if (not voxelio::isGood(writeResult)) {
+            VXIO_LOG(ERROR, "Flush/Write error: " + informativeNameOf(writeResult));
+            err = writeResult;
+        }
+    }
+}
+
 void VoxelSink::flush()
 {
-    VXIO_ASSERT_CONSEQUENCE(not usePalette, buffer.size() < BUFFER_SIZE);
+    VXIO_ASSERT_CONSEQUENCE(not usePalette, buffer.size() == 0);
     VXIO_ASSERT_CONSEQUENCE(usePalette, buffer.size() == voxelCount);
 
     VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
-    VXIO_LOG(DEBUG, "Flushing " + stringify(buffer.size()) + " voxels ...");
 
     if (usePalette) {
+        VXIO_LOG(DEBUG, "Flushing " + stringify(buffer.size()) + " voxels ...");
         // not strictly necessary but allows us to keep apart init errors and write errors
         ResultCode initResult = writer->init();
         VXIO_ASSERTM(voxelio::isGood(initResult), voxelio::informativeNameOf(initResult));
+
+        ResultCode writeResult = writer->write(buffer.data(), buffer.size());
+        buffer.clear();
+
+        VXIO_ASSERTM(voxelio::isGood(writeResult), voxelio::informativeNameOf(writeResult));
     }
 
-    ResultCode writeResult = writer->write(buffer.data(), buffer.size());
-    buffer.clear();
-    VXIO_ASSERTM(voxelio::isGood(writeResult), voxelio::informativeNameOf(writeResult));
+    // TODO implement voxelio writer flushing
     VXIO_LOG(INFO, "Done!");
 }
 

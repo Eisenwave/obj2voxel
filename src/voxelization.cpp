@@ -376,10 +376,10 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 
 // VOXELIZATION ========================================================================================================
 
-[[nodiscard]] WeightedUv voxelizeVoxel(const VisualTriangle &inputTriangle,
-                                       Vec3u pos,
-                                       std::vector<TexturedTriangle> *preSplitBuffer,
-                                       std::vector<TexturedTriangle> *postSplitBuffer)
+[[nodiscard]] WeightedUv computeTrianglesUvInVoxel(const VisualTriangle &inputTriangle,
+                                                   Vec3u pos,
+                                                   std::vector<TexturedTriangle> *preSplitBuffer,
+                                                   std::vector<TexturedTriangle> *postSplitBuffer)
 {
     for (unsigned hi = 0; hi < 2; ++hi) {
         const auto splittingFunction =
@@ -421,6 +421,8 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 
 void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                          TexturedTriangle subTriangle,
+                         Vec3u32 min,
+                         Vec3u32 max,
                          std::vector<TexturedTriangle> *preSplitBuffer,
                          std::vector<TexturedTriangle> *postSplitBuffer,
                          VoxelMap<WeightedUv> &out)
@@ -431,12 +433,15 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
     const Vec3 planeOrg = subTriangle.vertex(0);
     const Vec3 planeNormal = normalize(subTriangle.normal());
 
-    const Vec3u vmin = subTriangle.voxelMin();
-    const Vec3u vmax = subTriangle.voxelMax();
+    Vec3u triangleMin = subTriangle.voxelMin();
+    triangleMin = obj2voxel::max(min, triangleMin);
 
-    for (unsigned z = vmin.z(); z < vmax.z(); ++z) {
-        for (unsigned y = vmin.y(); y < vmax.y(); ++y) {
-            for (unsigned x = vmin.x(); x < vmax.x(); ++x) {
+    Vec3u triangleMax = subTriangle.voxelMax();
+    triangleMax = obj2voxel::min(max, triangleMax);
+
+    for (unsigned z = triangleMin.z(); z < triangleMax.z(); ++z) {
+        for (unsigned y = triangleMin.y(); y < triangleMax.y(); ++y) {
+            for (unsigned x = triangleMin.x(); x < triangleMax.x(); ++x) {
                 const Vec3u pos = {x, y, z};
 
                 if constexpr (not DISABLE_PLANE_DISTANCE_TEST) {
@@ -452,7 +457,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                 VXIO_DEBUG_ASSERT(postSplitBuffer->empty());
 
                 preSplitBuffer->push_back(subTriangle);
-                WeightedUv uv = voxelizeVoxel(inputTriangle, pos, preSplitBuffer, postSplitBuffer);
+                WeightedUv uv = computeTrianglesUvInVoxel(inputTriangle, pos, preSplitBuffer, postSplitBuffer);
 
                 if (not eqExactly(uv.weight, 0.f)) {
                     insertWeighted<ColorStrategy::BLEND>(out, pos, uv);
@@ -462,25 +467,26 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
     }
 }
 
-/**
- * @brief Voxelizes a triangle.
- *
- * Among the parameters is an array of three buffers.
- * This array must be notnull.
- * The contents of the buffers are cleared by the callee, this parameter is only used so that allocation of new vectors
- * can be avoided for each triangle.
- *
- * @param triangle the input triangle to be voxelized
- * @param buffers three buffers which are used for intermediate operations
- * @param out the output map of voxel locations to weighted colors
- */
-void voxelizeTriangle(VisualTriangle inputTriangle, std::vector<TexturedTriangle> buffers[3], VoxelMap<WeightedUv> &out)
+}  // namespace
+
+// VOXELIZER IMPLEMENTATION ============================================================================================
+
+Voxelizer::Voxelizer(ColorStrategy colorStrategy) : combineFunction{combineFunctionOf(colorStrategy)} {}
+
+void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max)
 {
-    VXIO_DEBUG_ASSERT_NOTNULL(buffers);
+    VXIO_ASSERT(uvBuffer.empty());
+
+    voxelizeTriangleToUvBuffer(triangle, min, max);
+    consumeUvBuffer(triangle);
+}
+
+void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max)
+{
     for (size_t i = 0; i < 3; ++i) {
         buffers[i].clear();
     }
-    out.clear();
+    uvBuffer.clear();
 
     // 1. Subdivide
     subdivideLargeVolumeTriangles(inputTriangle, buffers[0]);
@@ -493,39 +499,23 @@ void voxelizeTriangle(VisualTriangle inputTriangle, std::vector<TexturedTriangle
 
     // 2. Voxelize
     for (TexturedTriangle subTriangle : buffers[0]) {
-        voxelizeSubTriangle(inputTriangle, subTriangle, buffers + 1, buffers + 2, out);
+        voxelizeSubTriangle(inputTriangle, subTriangle, min, max, buffers + 1, buffers + 2, uvBuffer);
     }
 }
 
-}  // namespace
-
-// DOWNSCALING =========================================================================================================
-
-VoxelMap<WeightedColor> downscale(VoxelMap<WeightedColor> voxels, ColorStrategy strategy, unsigned divisor)
+void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle)
 {
-    VXIO_ASSERTM(isPow2(divisor), "Divisor must be power of 2 but is " + stringify(divisor));
+    for (auto &[index, weightedUv] : uvBuffer) {
+        Vec3u32 pos = uvBuffer.posOf(index);
+        Vec3f colorVec = inputTriangle.colorAt_f(weightedUv.value);
+        WeightedColor color = {weightedUv.weight, colorVec};
 
-    if (divisor == 1) {
-        return voxels;
+        auto [location, success] = voxels_.emplace(pos, color);
+        if (not success) {
+            location->second = this->combineFunction(color, location->second);
+        }
     }
-
-    VoxelMap<WeightedColor> result;
-
-    const InsertionFunction insert = insertionFunctionOf(strategy);
-
-    for (auto iter = voxels.begin(); iter != voxels.end(); iter = voxels.erase(iter)) {
-        const Vec3u32 pos = voxels.posOf(iter->first) / divisor;
-        insert(result, pos, iter->second);
-    }
-
-    return result;
-}
-
-// VOXELIZER IMPLEMENTATION ============================================================================================
-
-Voxelizer::Voxelizer(AffineTransform transform, ColorStrategy colorStrategy)
-    : trans{transform}, combineFunction{combineFunctionOf(colorStrategy)}
-{
+    uvBuffer.clear();
 }
 
 AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation)
@@ -547,28 +537,6 @@ AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, unsigned resolut
     return result;
 }
 
-void Voxelizer::voxelize(VisualTriangle triangle)
-{
-    VXIO_ASSERT(uvBuffer.empty());
-
-    for (usize i = 0; i < 3; ++i) {
-        triangle.v[i] = trans.apply(triangle.v[i]);
-    }
-
-    obj2voxel::voxelizeTriangle(triangle, buffers, uvBuffer);
-    for (auto &[index, weightedUv] : uvBuffer) {
-        Vec3u32 pos = uvBuffer.posOf(index);
-        Vec3f colorVec = triangle.colorAt_f(weightedUv.value);
-        WeightedColor color = {weightedUv.weight, colorVec};
-
-        auto [location, success] = voxels_.emplace(pos, color);
-        if (not success) {
-            location->second = this->combineFunction(color, location->second);
-        }
-    }
-    uvBuffer.clear();
-}
-
 void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source)
 {
     for (auto &[index, color] : source) {
@@ -577,6 +545,24 @@ void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &
             location->second = this->combineFunction(color, location->second);
         }
     }
+}
+
+void Voxelizer::downscale()
+{
+    constexpr unsigned divisor = 2;
+
+    VoxelMap<WeightedColor> result;
+
+    for (auto iter = voxels_.begin(); iter != voxels_.end(); iter = voxels_.erase(iter)) {
+        u64 index = iter->first;
+
+        auto [location, success] = voxels_.emplace(index / divisor, iter->second);
+        if (not success) {
+            location->second = this->combineFunction(iter->second, location->second);
+        }
+    }
+
+    voxels_ = std::move(result);
 }
 
 }  // namespace obj2voxel

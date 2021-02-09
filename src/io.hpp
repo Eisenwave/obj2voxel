@@ -36,10 +36,10 @@ struct ITriangleStream {
     virtual bool hasNext() = 0;
 
     /// Returns the number of vertices in the inderlying mesh.
-    virtual usize vertexCount() = 0;
+    virtual usize vertexCount() const = 0;
 
     /// Returns the begin of the flattened vertex data.
-    virtual f32 *vertexBegin() = 0;
+    virtual const f32 *vertexBegin() const = 0;
 };
 
 /**
@@ -71,41 +71,18 @@ public:
         flush();
     }
 
-    /// Writes a voxel to the sink.
-    void write(Voxel32 buffer);
-
     /// Returns true if the writer has not encountered any errors yet and the sink can take more voxels.
     bool canWrite()
     {
         return err == ResultCode::OK;
     }
 
+    /// Writes a buffer of voxels to the sink.
+    void write(Voxel32 voxels[], usize size);
+
     /// Flushes the sink.
     void flush();
 };
-
-// Pulled out of cpp to allow for compiler optimizations.
-inline void VoxelSink::write(Voxel32 voxel)
-{
-    ++voxelCount;
-
-    if (usePalette) {
-        Palette32 &palette = writer->palette();
-        voxel.index = palette.insert(voxel.argb);
-        this->buffer.push_back(std::move(voxel));
-        return;
-    }
-
-    this->buffer.push_back(std::move(voxel));
-    if (this->buffer.size() == BUFFER_SIZE) {
-        voxelio::ResultCode writeResult = writer->write(buffer.data(), buffer.size());
-        this->buffer.clear();
-        if (not voxelio::isGood(writeResult)) {
-            VXIO_LOG(ERROR, "Flush/Write error: " + informativeNameOf(writeResult));
-            err = writeResult;
-        }
-    }
-}
 
 /**
  * @brief Loads an OBJ file from disk.

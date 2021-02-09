@@ -113,6 +113,18 @@ int mainImpl(std::string inFile,
     return resultCode;
 }
 
+void initLogging()
+{
+    constexpr bool asyncLogging = true;
+
+    if constexpr (voxelio::build::DEBUG) {
+        voxelio::logLevel = LogLevel::DEBUG;
+        VXIO_LOG(DEBUG, "Running debug build");
+    }
+
+    setLogCallback(nullptr, asyncLogging);
+}
+
 // CLI ARGUMENT PARSING ================================================================================================
 
 }  // namespace
@@ -164,13 +176,10 @@ int main()
 {
     using namespace obj2voxel;
 
-    if constexpr (voxelio::build::DEBUG) {
-        voxelio::logLevel = voxelio::LogLevel::DEBUG;
-        VXIO_LOG(DEBUG, "Running debug build");
-    }
+    initLogging();
 
 #ifdef OBJ2VOXEL_MANUAL_TEST
-    return mainImpl("//home/user/assets/mesh/sword/sword.obj", "/home/user/assets/mesh/sword/sword_64.vl32", 64);
+    return mainImpl("//home/user/assets/mesh/sword/sword.obj", "/home/user/assets/mesh/sword/sword_128.vl32", 128);
 #else
     const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
                                                                      {"blend", ColorStrategy::BLEND}};

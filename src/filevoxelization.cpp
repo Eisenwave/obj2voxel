@@ -12,46 +12,25 @@ namespace obj2voxel {
 
 namespace {
 
+//#define OBJ2VOXEL_DISABLE_PARALLELISM
+
+// WORKER COMMAND ======================================================================================================
+
 enum class CommandType {
-    /// Instructs a worker thread to voxelize a triangle.
-    VOXELIZE_TRIANGLE,
-    /// Instructs a worker thread to merge two voxel maps and clear the source map.
-    MERGE_MAPS,
+    /// Instructs a worker thread sort a triangle into chunks.
+    SORT_TRIANGLE_INTO_CHUNKS,
+    /// Instructs a worker thread to voxelize a chunk.
+    VOXELIZE_CHUNK,
     /// Instructs a worker to exit.
     EXIT
 };
 
 struct WorkerCommand {
-    static WorkerCommand exit()
-    {
-        return {};
-    }
-
-    struct MergeMaps {
-        VoxelMap<WeightedColor> *target;
-        VoxelMap<WeightedColor> *source;
-    };
-
     CommandType type;
-
-    union {
-        std::nullptr_t nothing;
-        VisualTriangle triangle;
-        MergeMaps mergeMaps;
-    };
-
-    constexpr explicit WorkerCommand(VisualTriangle triangle) : type{CommandType::VOXELIZE_TRIANGLE}, triangle{triangle}
-    {
-    }
-
-    constexpr WorkerCommand(VoxelMap<WeightedColor> *target, VoxelMap<WeightedColor> *source)
-        : type{CommandType::MERGE_MAPS}, mergeMaps{target, source}
-    {
-        VXIO_ASSERT_NE(target, source);
-    }
-
-    constexpr WorkerCommand() : type{CommandType::EXIT}, nothing{nullptr} {}
+    u32 index;
 };
+
+// COMMAND QUEUE =======================================================================================================
 
 /// Thread-safe queue of worker commands.
 class CommandQueue {
@@ -59,6 +38,7 @@ private:
     async::RingBuffer<WorkerCommand, 128> buffer;
     async::Counter<uintmax_t> commandCounter;
 
+#ifndef OBJ2VOXEL_DISABLE_PARALLELISM
 public:
     /// Signals completion of one command. To be called by workers.
     void complete()
@@ -84,107 +64,180 @@ public:
     {
         commandCounter.waitUntilZero();
     }
+#endif
 };
 
-class WorkerThread final
-    : public Voxelizer
-    , public std::thread {
-public:
-// we ignore warnings because emplace() calls below don't detect the usage of the constructor
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-member-function"
-    WorkerThread(AffineTransform meshTransform, ColorStrategy colorStrat, CommandQueue &queue)
-        : Voxelizer{meshTransform, colorStrat}, std::thread{&WorkerThread::run, this, std::ref(queue)}
-    {
+// ALGORITHM ===========================================================================================================
+
+/**
+ * @brief A struct that stores all shared state between the main thread and its workers.
+ */
+struct Instance {
+    // voxelize() function inputss
+    ColorStrategy colorStrategy;
+    VoxelSink *voxelSink = nullptr;
+    bool downscale = false;
+    unsigned resolution = 0;
+
+    // late-initialized inputs
+    AffineTransform meshTransform;
+    std::unique_ptr<std::vector<u32>[]> chunks = nullptr;
+    u32 chunkCount = 0;
+
+    // data structures
+    CommandQueue queue;
+    std::vector<VisualTriangle> triangles;
+    std::mutex sinkMutex;
+};
+
+constexpr u32 CHUNK_SIZE = 64;
+
+enum class TriangleSortMode { NORMAL, DEBUG_INTO_ALL, DEBUG_ABOVE_MIN };
+
+constexpr TriangleSortMode TRIANGLE_SORT_MODE = TriangleSortMode::NORMAL;
+
+void sortTriangleIntoChunks(Instance &instance, u32 triangleIndex)
+{
+    VXIO_DEBUG_ASSERT_LT(triangleIndex, instance.triangles.size());
+
+    const AffineTransform &transform = instance.meshTransform;
+    VisualTriangle &triangle = instance.triangles[triangleIndex];
+
+    for (usize i = 0; i < 3; ++i) {
+        triangle.v[i] = transform.apply(triangle.v[i]);
     }
 
-    WorkerThread(const WorkerThread &) = delete;
-    WorkerThread(WorkerThread &&) = default;
-#pragma clang diagnostic pop
+    const Vec3u32 voxelMin = triangle.voxelMin();
+    const Vec3u32 voxelMax = triangle.voxelMax();
 
-private:
-    void run(CommandQueue &queue);
-};
+    // TODO does this min really work when a triangle is exactly on a chunk boundary?
+    // TODO investigate using a model with a plane that halves it, see if plane is voxelized if it lies between chunks
+    // voxelMax() returns an exclusive bound which we need to make inclusive again
+    Vec3u32 min = voxelMin / CHUNK_SIZE;
+    Vec3u32 max = (voxelMax - Vec3u32::one()) / CHUNK_SIZE;
 
-void WorkerThread::run(CommandQueue &queue)
+    Vec3u32 chunkMax = max * CHUNK_SIZE + Vec3u32::filledWith(CHUNK_SIZE);
+    VXIO_DEBUG_ASSERT(obj2voxel::min(voxelMax, chunkMax) == voxelMax);
+
+    if constexpr (TRIANGLE_SORT_MODE == TriangleSortMode::DEBUG_INTO_ALL) {
+        for (u32 i = 0; i < instance.chunkCount; ++i) {
+            instance.chunks[i].push_back(triangleIndex);
+        }
+        return;
+    }
+    if constexpr (TRIANGLE_SORT_MODE == TriangleSortMode::DEBUG_ABOVE_MIN) {
+        dileave3(instance.chunkCount - 1, max.data());
+    }
+
+    for (u32 z = min.z(); z <= max.z(); ++z) {
+        for (u32 y = min.y(); y <= max.y(); ++y) {
+            for (u32 x = min.x(); x <= max.x(); ++x) {
+                u64 morton = ileave3(x, y, z);
+                VXIO_DEBUG_ASSERT_LT(morton, instance.chunkCount);
+                instance.chunks[morton].push_back(triangleIndex);
+            }
+        }
+    }
+}
+
+void computeChunkBounds(u64 morton, Vec3u32 &outMin, Vec3u32 &outMax)
 {
-    VXIO_LOG(DEBUG, "VoxelizerThread " + stringify(get_id()) + " started");
+    Vec3u32 chunkPos;
+    dileave3(morton, chunkPos.data());
+
+    outMin = chunkPos * CHUNK_SIZE;
+    outMax = outMin + Vec3u32::filledWith(CHUNK_SIZE);
+}
+
+void voxelizeChunk(Instance &instance, Voxelizer &voxelizer, u32 chunkIndex)
+{
+    VXIO_ASSERT(voxelizer.voxels().empty());
+
+    const std::vector<u32> &chunk = instance.chunks[chunkIndex];
+
+    Vec3u32 chunkMin, chunkMax;
+    computeChunkBounds(chunkIndex, chunkMin, chunkMax);
+    VXIO_ASSERT(chunkMin != chunkMax);
+
+    for (u32 triangle : chunk) {
+        voxelizer.voxelize(instance.triangles[triangle], chunkMin, chunkMax);
+    }
+
+    if (instance.downscale) {
+        voxelizer.downscale();
+    }
+
+    const usize voxelCount = voxelizer.voxels().size();
+    // TODO consider making this a member of worker thread instead
+    const auto buffer = std::make_unique<Voxel32[]>(voxelCount);
+
+    u32 i = 0;
+    for (auto [index, color] : voxelizer.voxels()) {
+        Vec3u32 pos32 = VoxelMap<WeightedColor>::posOf(index);
+        if constexpr (build::DEBUG) {
+            VXIO_ASSERT_EQ(index / (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE), chunkIndex);
+            for (usize i = 0; i < 3; ++i) {
+                VXIO_ASSERT_GE(pos32[i], chunkMin[i]);
+                VXIO_ASSERT_LT(pos32[i], chunkMax[i]);
+            }
+        }
+
+        Color32 color32{color.value};
+        buffer[i++] = {pos32.cast<i32>(), {color32.argb()}};
+    }
+    VXIO_ASSERT_EQ(i, voxelCount);
+    {
+        std::lock_guard<std::mutex> lock{instance.sinkMutex};
+        instance.voxelSink->write(buffer.get(), voxelCount);
+    }
+    VXIO_LOG(SPAM,
+             "Voxelized chunk " + stringifyOct(chunkIndex) + " t:" + stringifyDec(chunk.size()) + " -> " +
+                 stringifyDec(voxelCount));
+
+    voxelizer.voxels().clear();
+}
+
+// WORKER THREAD =======================================================================================================
+
+#ifndef OBJ2VOXEL_DISABLE_PARALLELISM
+void runWorker(Instance &instance)
+{
+    // voxelio::logLevel = LogLevel::SPAM;
+    Voxelizer voxelizer{instance.colorStrategy};
+
+    VXIO_LOG(DEBUG, "VoxelizerThread " + stringify(std::this_thread::get_id()) + " started");
     bool looping = true;
     do {
-        WorkerCommand command = queue.receive();
+        WorkerCommand command = instance.queue.receive();
         switch (command.type) {
-        case CommandType::VOXELIZE_TRIANGLE: {
-            this->voxelize(std::move(command.triangle));
-            break;
-        }
+        case CommandType::VOXELIZE_CHUNK: voxelizeChunk(instance, voxelizer, command.index); break;
 
-        case CommandType::MERGE_MAPS: {
-            VXIO_DEBUG_ASSERT_NOTNULL(command.mergeMaps.target);
-            VXIO_DEBUG_ASSERT_NOTNULL(command.mergeMaps.source);
-            this->merge(*command.mergeMaps.target, *command.mergeMaps.source);
-            command.mergeMaps.source->clear();
-            break;
-        }
+        case CommandType::SORT_TRIANGLE_INTO_CHUNKS: sortTriangleIntoChunks(instance, command.index); break;
 
-        case CommandType::EXIT: {
-            looping = false;
-            break;
+        case CommandType::EXIT: looping = false; break;
         }
-        }
-        queue.complete();
+        instance.queue.complete();
     } while (looping);
 }
 
-VoxelMap<WeightedColor> mergeVoxelMaps(std::vector<WorkerThread> &threads, CommandQueue &queue)
-{
-    while (true) {
-        VoxelMap<WeightedColor> *mergeTarget = nullptr, *mergeSource = nullptr;
-        usize commandsIssued = 0;
-
-        for (auto &voxelizer : threads) {
-            if (voxelizer.voxels().empty()) {
-                continue;
-            }
-
-            if (mergeTarget == nullptr) {
-                mergeTarget = &voxelizer.voxels();
-                continue;
-            }
-            else {
-                mergeSource = &voxelizer.voxels();
-
-                if (mergeTarget->size() < mergeSource->size()) {
-                    std::swap(mergeTarget, mergeSource);
-                }
-                ++commandsIssued;
-                queue.issue(WorkerCommand{mergeTarget, mergeSource});
-                mergeTarget = mergeSource = nullptr;
-            }
-        }
-
-        if (commandsIssued == 0) {
-            return mergeTarget == nullptr ? VoxelMap<WeightedColor>() : std::move(*mergeTarget);
-        }
-
-        queue.waitForCompletion();
-    }
-}
-
-void joinWorkers(std::vector<WorkerThread> &threads, CommandQueue &queue)
+void joinWorkers(std::vector<std::thread> &threads, CommandQueue &queue)
 {
     for (usize i = 0; i < threads.size(); ++i) {
-        queue.issue(WorkerCommand::exit());
+        queue.issue({CommandType::EXIT, 0});
     }
     for (auto &worker : threads) {
         worker.join();
     }
 }
+#endif
+
+// MAIN THREAD IMPLEMENTATIONS =========================================================================================
 
 template <typename Float>
-void findBoundaries(const float data[], usize vertexCount, Vec<Float, 3> &outMin, Vec<Float, 3> &outMax)
+void findBoundaries(const Float data[], usize vertexCount, Vec<Float, 3> &outMin, Vec<Float, 3> &outMax)
 {
-    Vec<Float, 3> min = {data[0], data[1], data[2]};
-    Vec<Float, 3> max = min;
+    auto min = Vec<Float, 3>::filledWith(std::numeric_limits<Float>::infinity());
+    auto max = -min;
 
     usize limit = vertexCount * 3;
     for (size_t i = 0; i < limit; i += 3) {
@@ -197,6 +250,99 @@ void findBoundaries(const float data[], usize vertexCount, Vec<Float, 3> &outMin
     outMax = max;
 }
 
+AffineTransform computeTransform(const ITriangleStream &stream, unsigned resolution, Vec3u permutation)
+{
+    Vec3 meshMin, meshMax;
+    findBoundaries(stream.vertexBegin(), stream.vertexCount(), meshMin, meshMax);
+    AffineTransform meshTransform = Voxelizer::computeTransform(meshMin, meshMax, resolution, permutation);
+
+    return meshTransform;
+}
+
+// VOXELIZATION MAIN FUNCTIONALITY =====================================================================================
+
+#ifndef OBJ2VOXEL_DISABLE_PARALLELISM
+bool voxelize_impl(Instance &instance, ITriangleStream &stream)
+{
+    const usize threadCount = std::thread::hardware_concurrency();
+
+    std::vector<std::thread> workers;
+    workers.reserve(threadCount);
+
+    VXIO_LOG(DEBUG, "Starting up worker threads ...");
+
+    for (usize i = 0; i < threadCount; ++i) {
+        auto &worker = workers.emplace_back(&runWorker, std::ref(instance));
+        VXIO_ASSERT(worker.joinable());
+    }
+
+    VXIO_LOG(DEBUG, "Sorting triangles into chunks ...");
+
+    while (stream.hasNext()) {
+        VisualTriangle triangle = stream.next();
+        auto index = static_cast<u32>(instance.triangles.size());
+
+        // We can't push the triangle yet because this may cause a std::vector reallocation.
+        // It also doesn't make sense to sort ourselves or to copy the triangle into the command because the worker
+        // also applies the mesh transform in-place.
+        // TODO investigate if this is still a performance benefit or if we should do everything on the main thread.
+        instance.queue.waitForCompletion();
+
+        instance.triangles.push_back(triangle);
+        instance.queue.issue({CommandType::SORT_TRIANGLE_INTO_CHUNKS, index});
+    }
+
+    if (instance.downscale) {
+        VXIO_LOG(INFO,
+                 "Chunks will be downscaled from " + stringifyLargeInt(instance.resolution) + " to output resolution " +
+                     stringifyLargeInt(instance.resolution / 2) + " ...");
+    }
+
+    instance.queue.waitForCompletion();
+
+    VXIO_LOG(DEBUG, "Voxelizing ...");
+    for (u32 i = 0; i < instance.chunkCount; ++i) {
+        instance.queue.issue({CommandType::VOXELIZE_CHUNK, i});
+    }
+
+    instance.queue.waitForCompletion();
+
+    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(instance.triangles.size()) + " triangles");
+
+    joinWorkers(workers, instance.queue);
+
+    return true;
+}
+#else
+bool voxelize_impl(Instance &instance, ITriangleStream &stream)
+{
+    // logLevel = LogLevel::SPAM;
+
+    while (stream.hasNext()) {
+        auto index = static_cast<u32>(instance.triangles.size());
+        instance.triangles.push_back(stream.next());
+        sortTriangleIntoChunks(instance, index);
+    }
+
+    if (instance.downscale) {
+        VXIO_LOG(INFO,
+                 "Chunks will be downscaled from " + stringifyLargeInt(instance.resolution) + " to output resolution " +
+                     stringifyLargeInt(instance.resolution / 2) + " ...");
+    }
+
+    Voxelizer voxelizer{instance.colorStrategy};
+
+    VXIO_LOG(DEBUG, "Voxelizing ...");
+    for (u32 i = 0; i < instance.chunkCount; ++i) {
+        voxelizeChunk(instance, voxelizer, i);
+    }
+
+    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(instance.triangles.size()) + " triangles");
+
+    return true;
+}
+#endif
+
 }  // namespace
 
 bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
@@ -208,60 +354,19 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
     }
     VXIO_LOG(INFO, "Loaded model with " + stringifyLargeInt(stream.vertexCount()) + " vertices");
 
-    CommandQueue queue;
+    Instance instance;
+    instance.colorStrategy = args.colorStrategy;
+    instance.voxelSink = &sink;
+    instance.downscale = args.downscale;
+    instance.resolution = args.resolution;
 
-    usize totalTriangleCount = 0;
-    usize threadCount = std::thread::hardware_concurrency();
+    u32 chunkCountCbrt = divCeil(args.resolution, CHUNK_SIZE);
+    instance.chunkCount = chunkCountCbrt * chunkCountCbrt * chunkCountCbrt;
+    instance.chunks = std::make_unique<std::vector<u32>[]>(instance.chunkCount);
 
-    Vec3 meshMin, meshMax;
-    findBoundaries(stream.vertexBegin(), stream.vertexCount(), meshMin, meshMax);
-    AffineTransform meshTransform = Voxelizer::computeTransform(meshMin, meshMax, args.resolution, args.permutation);
+    instance.meshTransform = computeTransform(stream, args.resolution, args.permutation);
 
-    std::vector<WorkerThread> workers;
-    workers.reserve(threadCount);
-    for (usize i = 0; i < threadCount; ++i) {
-        auto &voxelizer = workers.emplace_back(meshTransform, args.colorStrategy, queue);
-        VXIO_ASSERT(voxelizer.joinable());
-    }
-
-    // Loop over shapes
-    while (stream.hasNext()) {
-        ++totalTriangleCount;
-        queue.issue(WorkerCommand{stream.next()});
-    }
-    VXIO_LOG(DEBUG, "Pushed all triangles, waiting until buffer is empty");
-
-    queue.waitForCompletion();
-
-    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(totalTriangleCount) + " triangles, merging results ...");
-
-    VoxelMap<WeightedColor> result = mergeVoxelMaps(workers, queue);
-
-    joinWorkers(workers, queue);
-
-    if (args.downscale) {
-        VXIO_LOG(INFO,
-                 "Downscaling from " + stringifyLargeInt(args.resolution) + " to output resolution " +
-                     stringifyLargeInt(args.resolution / 2) + " ...")
-        result = downscale(result, args.colorStrategy);
-    }
-
-    VXIO_LOG(INFO, "Writing voxels to disk ...");
-
-    for (auto &[index, color] : result) {
-        if (not sink.canWrite()) {
-            VXIO_LOG(ERROR, "No more voxels can be written after I/O error, aborting ...");
-            return false;
-        }
-
-        Voxel32 voxel;
-        voxel.pos = result.posOf(index).cast<i32>();
-        voxel.argb = Color32{color.value.x(), color.value.y(), color.value.z()};
-
-        sink.write(voxel);
-    }
-
-    return true;
+    return voxelize_impl(instance, stream);
 }
 
 }  // namespace obj2voxel
