@@ -1,0 +1,21 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: make build directory
+      run: cmake -E make_directory build
+    - name: cmake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+    - name: make
+      run: make -C build
