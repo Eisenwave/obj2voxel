@@ -148,7 +148,7 @@ struct SplittingValues {
 };
 
 template <DiscardMode DISCARD_MODE>
-void splitTriangle_impl(const TexturedTriangle &t, SplittingValues val, LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+void splitTriangle_decideCase(const TexturedTriangle &t, SplittingValues val, LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
 
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_onePlanarCase(const TexturedTriangle &t,
@@ -189,11 +189,11 @@ void splitTriangle(const u32 axis,
         val.loSum += val.loVertices[i];
     }
 
-    return splitTriangle_impl<DISCARD_MODE>(t, val, {outLo, outHi});
+    return splitTriangle_decideCase<DISCARD_MODE>(t, val, {outLo, outHi});
 }
 
 template <DiscardMode DISCARD_MODE>
-void splitTriangle_impl(const TexturedTriangle &t,
+void splitTriangle_decideCase(const TexturedTriangle &t,
                         const SplittingValues val,
                         const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
 {
