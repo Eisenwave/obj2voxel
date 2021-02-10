@@ -182,7 +182,6 @@ constexpr const char *SS_DESCR =
     "The model is voxelized at double resolution and then downscaled while combining colors.";
 constexpr const char *THREADS_DESCR = "Number of worker threads to be started for voxelization. "
                                       "Set to zero for single-threaded voxelization. "
-                                      "The best choice is usually the number of physical CPU cores. "
                                       "(Default: CPU threads)";
 
 int main(int argc, char **argv)
