@@ -66,7 +66,7 @@ private:
 public:
     Voxelizer(ColorStrategy colorStrategy);
 
-    Voxelizer(const Voxelizer &&) = delete;
+    Voxelizer(const Voxelizer &) = delete;
     Voxelizer(Voxelizer &&) = default;
 
     void voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max);
