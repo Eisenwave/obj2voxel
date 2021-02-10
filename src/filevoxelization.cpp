@@ -81,20 +81,16 @@ struct Instance {
 
     // late-initialized inputs
     AffineTransform meshTransform;
-    std::unique_ptr<std::vector<u32>[]> chunks = nullptr;
     u32 chunkCount = 0;
 
     // data structures
     CommandQueue queue;
     std::vector<VisualTriangle> triangles;
+    std::unordered_map<u64, std::vector<u32>> chunks;
     std::mutex sinkMutex;
 };
 
 constexpr u32 CHUNK_SIZE = 64;
-
-enum class TriangleSortMode { NORMAL, DEBUG_INTO_ALL, DEBUG_ABOVE_MIN };
-
-constexpr TriangleSortMode TRIANGLE_SORT_MODE = TriangleSortMode::NORMAL;
 
 void sortTriangleIntoChunks(Instance &instance, u32 triangleIndex)
 {
@@ -118,16 +114,6 @@ void sortTriangleIntoChunks(Instance &instance, u32 triangleIndex)
 
     Vec3u32 chunkMax = max * CHUNK_SIZE + Vec3u32::filledWith(CHUNK_SIZE);
     VXIO_DEBUG_ASSERT(obj2voxel::min(voxelMax, chunkMax) == voxelMax);
-
-    if constexpr (TRIANGLE_SORT_MODE == TriangleSortMode::DEBUG_INTO_ALL) {
-        for (u32 i = 0; i < instance.chunkCount; ++i) {
-            instance.chunks[i].push_back(triangleIndex);
-        }
-        return;
-    }
-    if constexpr (TRIANGLE_SORT_MODE == TriangleSortMode::DEBUG_ABOVE_MIN) {
-        dileave3(instance.chunkCount - 1, max.data());
-    }
 
     for (u32 z = min.z(); z <= max.z(); ++z) {
         for (u32 y = min.y(); y <= max.y(); ++y) {
@@ -153,7 +139,7 @@ void voxelizeChunk(Instance &instance, Voxelizer &voxelizer, u32 chunkIndex)
 {
     VXIO_ASSERT(voxelizer.voxels().empty());
 
-    const std::vector<u32> &chunk = instance.chunks[chunkIndex];
+    const std::vector<u32> &chunk = instance.chunks.at(chunkIndex);
 
     Vec3u32 chunkMin, chunkMax;
     computeChunkBounds(chunkIndex, chunkMin, chunkMax);
@@ -301,7 +287,9 @@ bool voxelize_parallel(Instance &instance, ITriangleStream &stream, unsigned thr
 
     VXIO_LOG(DEBUG, "Voxelizing ...");
     for (u32 i = 0; i < instance.chunkCount; ++i) {
-        instance.queue.issue({CommandType::VOXELIZE_CHUNK, i});
+        if (instance.chunks.find(i) != instance.chunks.end()) {
+            instance.queue.issue({CommandType::VOXELIZE_CHUNK, i});
+        }
     }
 
     instance.queue.waitForCompletion();
@@ -333,7 +321,9 @@ bool voxelize_single(Instance &instance, ITriangleStream &stream)
 
     VXIO_LOG(DEBUG, "Voxelizing ...");
     for (u32 i = 0; i < instance.chunkCount; ++i) {
-        voxelizeChunk(instance, voxelizer, i);
+        if (instance.chunks.find(i) != instance.chunks.end()) {
+            voxelizeChunk(instance, voxelizer, i);
+        }
     }
 
     VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(instance.triangles.size()) + " triangles");
@@ -360,7 +350,6 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
 
     u32 chunkCountCbrt = divCeil(args.resolution, CHUNK_SIZE);
     instance.chunkCount = chunkCountCbrt * chunkCountCbrt * chunkCountCbrt;
-    instance.chunks = std::make_unique<std::vector<u32>[]>(instance.chunkCount);
 
     instance.meshTransform = computeTransform(stream, args.resolution, args.permutation);
 
