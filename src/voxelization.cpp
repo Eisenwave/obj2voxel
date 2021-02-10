@@ -20,12 +20,12 @@ inline bool isZero(real_type x)
     return std::abs(x) < EPSILON;
 }
 
-inline bool eq(real_type x, unsigned plane)
+inline bool eq(real_type x, u32 plane)
 {
     return isZero(x - real_type(plane));
 }
 
-inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, unsigned axis, unsigned plane)
+inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, u32 axis, u32 plane)
 {
     real_type d = -dir[axis];
     return isZero(d) ? 0 : (org[axis] - real_type(plane)) / d;
@@ -73,14 +73,6 @@ inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> co
     }
 }
 
-using InsertionFunction = decltype(&insertWeighted<ColorStrategy::BLEND, Vec3>);
-
-constexpr InsertionFunction insertionFunctionOf(ColorStrategy colorStrategy)
-{
-    return colorStrategy == ColorStrategy::BLEND ? insertWeighted<ColorStrategy::BLEND, Vec3>
-                                                 : insertWeighted<ColorStrategy::MAX, Vec3>;
-}
-
 constexpr WeightedCombineFunction<Vec3f> combineFunctionOf(ColorStrategy colorStrategy)
 {
     return colorStrategy == ColorStrategy::BLEND ? combineFunction<ColorStrategy::BLEND, Vec3>
@@ -98,26 +90,14 @@ enum class DiscardMode {
     DISCARD_HI
 };
 
-/**
- * @brief Splits a single triangle into multiple triangles on a specified axis plane.
- * The triangles are inserted into two vectors depending on whether the sub-triangles are on the negative or positive
- * side of the axis plane.
- * @param axis the axis of the plane in [0, 3)
- * @param plane the plane offset
- * @param t the triangle
- * @param outLo the output vector for lower triangles
- * @param outHi the output vector for higher triangles
- */
-template <DiscardMode DISCARD_MODE = DiscardMode::NONE>
-void splitTriangle(const unsigned axis,
-                   const unsigned plane,
-                   TexturedTriangle t,
-                   std::vector<TexturedTriangle> &outLo,
-                   std::vector<TexturedTriangle> &outHi)
-{
-    // This local helper function lets us insert into outLo or outHi using a one-liner while still considering the
-    // DISCARD_MODE.
-    const auto pushLoIfTrueElseHi = [&](TexturedTriangle t, bool lo) -> void {
+/// This helper functor lets us insert into outLo or outHi using a one-liner while still considering the DISCARD_MODE.
+template <DiscardMode DISCARD_MODE>
+struct LoHiPusher {
+    std::vector<TexturedTriangle> &outLo;
+    std::vector<TexturedTriangle> &outHi;
+
+    void operator()(TexturedTriangle t, bool lo) const noexcept
+    {
         if constexpr (DISCARD_MODE == DiscardMode::NONE) {
             (lo ? outLo : outHi).push_back(std::move(t));
         }
@@ -131,28 +111,96 @@ void splitTriangle(const unsigned axis,
                 outLo.push_back(std::move(t));
             }
         }
-    };
+    }
+};
 
+struct SplittingValues {
+    u32 plane = 0;
+
+    u8 axis;
+    u8 loSum = 0;
+    u8 planarSum = 0;
+    u8 padding;
+
+    // there are only three vertices, the last bool is padding
+    bool loVertices[4];
+    bool planarVertices[4];
+
+    u8 firstLo() const
+    {
+        return loVertices[0] ? 0 : loVertices[1] ? 1 : 2;
+    }
+
+    u8 firstHi() const
+    {
+        return not loVertices[0] ? 0 : not loVertices[1] ? 1 : 2;
+    }
+
+    u8 firstPlanar() const
+    {
+        return planarVertices[0] ? 0 : planarVertices[1] ? 1 : 2;
+    }
+
+    u8 firstNonplanar() const
+    {
+        return not planarVertices[0] ? 0 : not planarVertices[1] ? 1 : 2;
+    }
+};
+
+template <DiscardMode DISCARD_MODE>
+void splitTriangle_impl(const TexturedTriangle &t, SplittingValues val, LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+
+template <DiscardMode DISCARD_MODE>
+void splitTriangle_onePlanarCase(const TexturedTriangle &t,
+                                 SplittingValues val,
+                                 LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+
+template <DiscardMode DISCARD_MODE>
+void splitTriangle_regularCase(const TexturedTriangle &t,
+                               SplittingValues val,
+                               LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+
+/**
+ * @brief Splits a single triangle into multiple triangles on a specified axis plane.
+ * The triangles are inserted into two vectors depending on whether the sub-triangles are on the negative or positive
+ * side of the axis plane.
+ * @param axis the axis of the plane in [0, 3)
+ * @param plane the plane offset
+ * @param t the triangle
+ * @param outLo the output vector for lower triangles
+ * @param outHi the output vector for higher triangles
+ */
+template <DiscardMode DISCARD_MODE = DiscardMode::NONE>
+void splitTriangle(const u32 axis,
+                   const u32 plane,
+                   const TexturedTriangle &t,
+                   std::vector<TexturedTriangle> &outLo,
+                   std::vector<TexturedTriangle> &outHi)
+{
+    SplittingValues val;
+    val.axis = static_cast<u8>(axis);
+    val.plane = plane;
+
+    for (unsigned i = 0; i < 3; ++i) {
+        val.planarVertices[i] = eq(t.vertex(i)[axis], plane);
+        val.loVertices[i] = t.vertex(i)[axis] <= real_type(plane);
+
+        val.planarSum += val.planarVertices[i];
+        val.loSum += val.loVertices[i];
+    }
+
+    return splitTriangle_impl<DISCARD_MODE>(t, val, {outLo, outHi});
+}
+
+template <DiscardMode DISCARD_MODE>
+void splitTriangle_impl(const TexturedTriangle &t,
+                        const SplittingValues val,
+                        const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
+{
     // clang tends to mess up curly brackets and indentation in this function
     // clang-format off
-    const bool planarVertices[3]{
-        eq(t.vertex(0)[axis], plane),
-        eq(t.vertex(1)[axis], plane),
-        eq(t.vertex(2)[axis], plane),
-    };
-    const bool loVertices[3]{
-        t.vertex(0)[axis] <= real_type(plane),
-        t.vertex(1)[axis] <= real_type(plane),
-        t.vertex(2)[axis] <= real_type(plane),
-    };
-
-    const unsigned planarSum = planarVertices[0] + planarVertices[1] + planarVertices[2];
-    const unsigned loSum = loVertices[0] + loVertices[1] + loVertices[2];
-
-#define OBJ2VOXEL_LO_AND_PLANAR(lo, planar) (planar << 2) | lo
-    const unsigned caseNum = OBJ2VOXEL_LO_AND_PLANAR(loSum, planarSum);
-
-
+#define OBJ2VOXEL_LO_AND_PLANAR(lo, planar) static_cast<u8>(planar << 2u) | lo
+    const u8 caseNum = OBJ2VOXEL_LO_AND_PLANAR(val.loSum, val.planarSum);
 
     switch (caseNum) {
     // Special case: All vertices are on the hi side of the splitting plane
@@ -160,8 +208,7 @@ void splitTriangle(const unsigned axis,
     case OBJ2VOXEL_LO_AND_PLANAR(0, 1):
     case OBJ2VOXEL_LO_AND_PLANAR(0, 2):
     case OBJ2VOXEL_LO_AND_PLANAR(0, 3):
-        pushLoIfTrueElseHi(std::move(t), false);
-        return;
+        return pushLoIfTrueElseHi(std::move(t), false);
 
     // Special case: All vertices are on the lo side of the splitting plane
     case OBJ2VOXEL_LO_AND_PLANAR(3, 0):
@@ -171,17 +218,14 @@ void splitTriangle(const unsigned axis,
     // Special case: triangle is parallel to the splitting plane (except if all vertices are hi or lo)
     case OBJ2VOXEL_LO_AND_PLANAR(1, 3):
     case OBJ2VOXEL_LO_AND_PLANAR(2, 3):
-        pushLoIfTrueElseHi(std::move(t), true);
-        return;
+        return pushLoIfTrueElseHi(std::move(t), true);
 
     // Special case: Two vertices are on the splitting plane, meaning the triangle can't be split
     //               We must still make a decision whether to put it into outLo or outHi
     case OBJ2VOXEL_LO_AND_PLANAR(1, 2):
     case OBJ2VOXEL_LO_AND_PLANAR(2, 2): {
-        const unsigned nonPlanarIndex = not planarVertices[0] ? 0 : not planarVertices[1] ? 1 : 2;
-        const bool isNonPlanarLo = t.vertex(nonPlanarIndex)[axis] <= real_type(plane);
-        pushLoIfTrueElseHi(std::move(t), isNonPlanarLo);
-        return;
+        const bool isNonPlanarLo = t.vertex(val.firstNonplanar())[val.axis] <= real_type(val.plane);
+        return pushLoIfTrueElseHi(std::move(t), isNonPlanarLo);
     }
 
     // Special case: One vertex lies on the splitting plane
@@ -189,132 +233,14 @@ void splitTriangle(const unsigned axis,
     //               Otherwise, we only perform one split with the side opposing the planar vertex
     case OBJ2VOXEL_LO_AND_PLANAR(1, 1):
     case OBJ2VOXEL_LO_AND_PLANAR(2, 1): {
-        const unsigned planarIndex = planarVertices[0] ? 0 : planarVertices[1] ? 1 : 2;
-        const unsigned nonPlanarIndices[2]{
-            (planarIndex + 1) % 3,
-            (planarIndex + 2) % 3
-        };
-
-        const unsigned nonPlanarLoSum = loVertices[nonPlanarIndices[0]] + loVertices[nonPlanarIndices[1]];
-        // Special case: Both non-planar vertices lie on one side of the splitting plane
-        if (nonPlanarLoSum != 1) {
-            const bool areNonPlanarsLo = nonPlanarLoSum == 2;
-            pushLoIfTrueElseHi(std::move(t), areNonPlanarsLo);
-            return;
-        }
-        // Special case: The splitting plane goes through one vertex
-        //               Instead of producing a triangle and a quad, we only produce two triangles
-        //               We only perform one intersection test with the opposing edge
-        const Vec3 planarVertex = t.vertex(planarIndex);
-        const Vec2 planarTexture = t.texture(planarIndex);
-        const Vec3 nonPlanarVertices[2] {
-            t.vertex(nonPlanarIndices[0]),
-            t.vertex(nonPlanarIndices[1])
-        };
-        const Vec2 nonPlanarTextures[2] {
-            t.texture(nonPlanarIndices[0]),
-            t.texture(nonPlanarIndices[1])
-        };
-        const Vec3 nonPlanarEdge = nonPlanarVertices[1] - nonPlanarVertices[0];
-
-        const real_type intersection = intersect_ray_axisPlane(nonPlanarVertices[0], nonPlanarEdge, axis, plane);
-        const Vec3 geoIntersection = obj2voxel::mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
-        const Vec2 texIntersection = obj2voxel::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
-
-        const TexturedTriangle triangles[2] {
-            {
-                {planarVertex, nonPlanarVertices[0], geoIntersection},
-                {planarTexture, nonPlanarTextures[0], texIntersection}
-            },
-            {
-                {planarVertex, geoIntersection, nonPlanarVertices[1]},
-                {planarTexture, texIntersection, nonPlanarTextures[1]}
-            }
-        };
-
-        const bool isFirstTriangleLo = loVertices[nonPlanarIndices[0]];
-
-        pushLoIfTrueElseHi(std::move(triangles[0]), isFirstTriangleLo);
-        pushLoIfTrueElseHi(std::move(triangles[1]), not isFirstTriangleLo);
-        return;
+        return splitTriangle_onePlanarCase(t, val, pushLoIfTrueElseHi);
     }
 
     // Regular case: None of the vertices are planar and the triangle is intersected by the splitting plane
     //               We put this into an else-block to make debugging easier by reducing the number of variables
     case OBJ2VOXEL_LO_AND_PLANAR(1, 0):
     case OBJ2VOXEL_LO_AND_PLANAR(2, 0): {
-        VXIO_DEBUG_ASSERT(loSum == 1 || loSum == 2);
-        VXIO_DEBUG_ASSERT_EQ(planarSum, 0);
-
-        // Any split produces one isolated triangle and a quad consisting of two other triangles.
-        // First, figure out which index is isolated.
-        const bool isIsolatedLo = loSum == 1;
-
-        const unsigned isolatedIndex = isIsolatedLo ? (loVertices[0] ? 0 : loVertices[1] ? 1 : 2)
-                                                    : (not loVertices[0] ? 0 : not loVertices[1] ? 1 : 2);
-        // Obtain the other two indices via exclusion.
-        const unsigned otherIndices[2] {
-            (isolatedIndex + 1) % 3,
-            (isolatedIndex + 2) % 3
-        };
-
-        // The intersection points are always on edges adjacent to the isolated index.
-        // We can obtain the exact points by linearly interpolating using our intersection points.
-        const Vec3 isolatedVertex = t.vertex(isolatedIndex);
-        const Vec2 isolatedTexture = t.texture(isolatedIndex);
-
-        const Vec3 otherVertices[2] {
-            t.vertex(otherIndices[0]),
-            t.vertex(otherIndices[1])
-        };
-        const Vec2 otherTextures[2] {
-            t.texture(otherIndices[0]),
-            t.texture(otherIndices[1])
-        };
-        const Vec3 edgesToOtherVertices[2] {
-            t.vertex(otherIndices[0]) - isolatedVertex,
-            t.vertex(otherIndices[1]) - isolatedVertex
-        };
-
-        const real_type intersections[2] {
-            intersect_ray_axisPlane(isolatedVertex, edgesToOtherVertices[0], axis, plane),
-            intersect_ray_axisPlane(isolatedVertex, edgesToOtherVertices[1], axis, plane),
-        };
-
-        const Vec3 geoIsectPoints[2] {
-            obj2voxel::mix(isolatedVertex, otherVertices[0], intersections[0]),
-            obj2voxel::mix(isolatedVertex, otherVertices[1], intersections[1])
-        };
-        const Vec2 texIsectPoints[2] {
-            obj2voxel::mix(isolatedTexture, otherTextures[0], intersections[0]),
-            obj2voxel::mix(isolatedTexture, otherTextures[1], intersections[1])
-        };
-
-        // Construct the isolated triangle from intersection points.
-        const TexturedTriangle isolatedTriangle = {
-            {isolatedVertex, geoIsectPoints[0], geoIsectPoints[1]},
-            {isolatedTexture, texIsectPoints[0], texIsectPoints[1]}
-        };
-        // Construct two other triangles from quad on the other side.
-        const TexturedTriangle otherTriangles[2] {
-            {
-                {geoIsectPoints[0], otherVertices[0], otherVertices[1]},
-                {texIsectPoints[0], otherTextures[0], otherTextures[1]}
-            },
-            {
-                {geoIsectPoints[0], geoIsectPoints[1], otherVertices[1]},
-                {texIsectPoints[0], texIsectPoints[1], otherTextures[1]}
-            }
-        };
-
-        // Insert isolated triangle into lo or hi.
-        pushLoIfTrueElseHi(std::move(isolatedTriangle), isIsolatedLo);
-
-        // Insert other triangles into low or hi.
-        for (usize i = 0; i < 2; ++i) {
-            pushLoIfTrueElseHi(std::move(otherTriangles[i]), not isIsolatedLo);
-        }
-        return;
+        return splitTriangle_regularCase(t, val, pushLoIfTrueElseHi);
     }
 
     }
@@ -322,6 +248,101 @@ void splitTriangle(const unsigned axis,
     VXIO_DEBUG_ASSERT_UNREACHABLE();
     // clang-format on
 }
+
+template <DiscardMode DISCARD_MODE>
+void splitTriangle_onePlanarCase(const TexturedTriangle &t,
+                                 const SplittingValues val,
+                                 const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
+{
+    const unsigned planarIndex = val.firstPlanar();
+    const unsigned nonPlanarIndices[2]{(planarIndex + 1) % 3, (planarIndex + 2) % 3};
+
+    const unsigned nonPlanarLoSum = val.loVertices[nonPlanarIndices[0]] + val.loVertices[nonPlanarIndices[1]];
+    // Special case: Both non-planar vertices lie on one side of the splitting plane
+    if (nonPlanarLoSum != 1) {
+        const bool areNonPlanarsLo = nonPlanarLoSum == 2;
+        pushLoIfTrueElseHi(std::move(t), areNonPlanarsLo);
+        return;
+    }
+    // Special case: The splitting plane goes through one vertex
+    //               Instead of producing a triangle and a quad, we only produce two triangles
+    //               We only perform one intersection test with the opposing edge
+    const Vec3 planarVertex = t.vertex(planarIndex);
+    const Vec2 planarTexture = t.texture(planarIndex);
+    const Vec3 nonPlanarVertices[2]{t.vertex(nonPlanarIndices[0]), t.vertex(nonPlanarIndices[1])};
+    const Vec2 nonPlanarTextures[2]{t.texture(nonPlanarIndices[0]), t.texture(nonPlanarIndices[1])};
+    const Vec3 nonPlanarEdge = nonPlanarVertices[1] - nonPlanarVertices[0];
+
+    const real_type intersection = intersect_ray_axisPlane(nonPlanarVertices[0], nonPlanarEdge, val.axis, val.plane);
+    const Vec3 geoIntersection = obj2voxel::mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
+    const Vec2 texIntersection = obj2voxel::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
+
+    const TexturedTriangle triangles[2]{
+        {{planarVertex, nonPlanarVertices[0], geoIntersection}, {planarTexture, nonPlanarTextures[0], texIntersection}},
+        {{planarVertex, geoIntersection, nonPlanarVertices[1]},
+         {planarTexture, texIntersection, nonPlanarTextures[1]}}};
+
+    const bool isFirstTriangleLo = val.loVertices[nonPlanarIndices[0]];
+
+    pushLoIfTrueElseHi(std::move(triangles[0]), isFirstTriangleLo);
+    pushLoIfTrueElseHi(std::move(triangles[1]), not isFirstTriangleLo);
+}
+
+template <DiscardMode DISCARD_MODE>
+void splitTriangle_regularCase(const TexturedTriangle &t,
+                               const SplittingValues val,
+                               const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
+{
+    VXIO_DEBUG_ASSERT(val.loSum == 1 || val.loSum == 2);
+    VXIO_DEBUG_ASSERT_EQ(val.planarSum, 0);
+
+    // Any split produces one isolated triangle and a quad consisting of two other triangles.
+    // First, figure out which index is isolated.
+    const bool isIsolatedLo = val.loSum == 1;
+
+    const unsigned isolatedIndex = isIsolatedLo ? val.firstLo() : val.firstHi();
+    // Obtain the other two indices via exclusion.
+    const unsigned otherIndices[2]{(isolatedIndex + 1) % 3, (isolatedIndex + 2) % 3};
+
+    // The intersection points are always on edges adjacent to the isolated index.
+    // We can obtain the exact points by linearly interpolating using our intersection points.
+    const Vec3 isolatedVertex = t.vertex(isolatedIndex);
+    const Vec2 isolatedTexture = t.texture(isolatedIndex);
+
+    const Vec3 otherVertices[2]{t.vertex(otherIndices[0]), t.vertex(otherIndices[1])};
+    const Vec2 otherTextures[2]{t.texture(otherIndices[0]), t.texture(otherIndices[1])};
+    const Vec3 edgesToOtherVertices[2]{t.vertex(otherIndices[0]) - isolatedVertex,
+                                       t.vertex(otherIndices[1]) - isolatedVertex};
+
+    const real_type intersections[2]{
+        intersect_ray_axisPlane(isolatedVertex, edgesToOtherVertices[0], val.axis, val.plane),
+        intersect_ray_axisPlane(isolatedVertex, edgesToOtherVertices[1], val.axis, val.plane),
+    };
+
+    const Vec3 geoIsectPoints[2]{obj2voxel::mix(isolatedVertex, otherVertices[0], intersections[0]),
+                                 obj2voxel::mix(isolatedVertex, otherVertices[1], intersections[1])};
+    const Vec2 texIsectPoints[2]{obj2voxel::mix(isolatedTexture, otherTextures[0], intersections[0]),
+                                 obj2voxel::mix(isolatedTexture, otherTextures[1], intersections[1])};
+
+    // Construct the isolated triangle from intersection points.
+    const TexturedTriangle isolatedTriangle = {{isolatedVertex, geoIsectPoints[0], geoIsectPoints[1]},
+                                               {isolatedTexture, texIsectPoints[0], texIsectPoints[1]}};
+    // Construct two other triangles from quad on the other side.
+    const TexturedTriangle otherTriangles[2]{{{geoIsectPoints[0], otherVertices[0], otherVertices[1]},
+                                              {texIsectPoints[0], otherTextures[0], otherTextures[1]}},
+                                             {{geoIsectPoints[0], geoIsectPoints[1], otherVertices[1]},
+                                              {texIsectPoints[0], texIsectPoints[1], otherTextures[1]}}};
+
+    // Insert isolated triangle into lo or hi.
+    pushLoIfTrueElseHi(std::move(isolatedTriangle), isIsolatedLo);
+
+    // Insert other triangles into low or hi.
+    for (usize i = 0; i < 2; ++i) {
+        pushLoIfTrueElseHi(std::move(otherTriangles[i]), not isIsolatedLo);
+    }
+}
+
+// SUBDIVISION =========================================================================================================
 
 /**
  * @brief Subdivides a buffer of triangles.
@@ -351,11 +372,11 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
     for (usize i = 0; i < out.size();) {
         const TexturedTriangle triangle = out[i];
 
-        const Vec3u vmin = triangle.voxelMin();
-        const Vec3u vmax = triangle.voxelMax();
+        const Vec3u32 vmin = triangle.voxelMin();
+        const Vec3u32 vmax = triangle.voxelMax();
         VXIO_DEBUG_ASSERT(vmin != vmax);
-        const Vec3u size = vmax - vmin;
-        const unsigned volume = size[0] * size[1] * size[2];
+        const Vec3u32 size = vmax - vmin;
+        const u32 volume = size[0] * size[1] * size[2];
 
         if (volume < volumeLimit) {
             ++i;
@@ -377,7 +398,7 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 // VOXELIZATION ========================================================================================================
 
 [[nodiscard]] WeightedUv computeTrianglesUvInVoxel(const VisualTriangle &inputTriangle,
-                                                   Vec3u pos,
+                                                   Vec3u32 pos,
                                                    std::vector<TexturedTriangle> *preSplitBuffer,
                                                    std::vector<TexturedTriangle> *postSplitBuffer)
 {
@@ -386,7 +407,7 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
             hi ? splitTriangle<DiscardMode::DISCARD_HI> : splitTriangle<DiscardMode::DISCARD_LO>;
 
         for (unsigned axis = 0; axis < 3; ++axis) {
-            const unsigned plane = pos[axis] + hi;
+            const u32 plane = pos[axis] + hi;
 
             for (const TexturedTriangle t : *preSplitBuffer) {
                 splittingFunction(axis, plane, t, *postSplitBuffer, *postSplitBuffer);
@@ -433,16 +454,16 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
     const Vec3 planeOrg = subTriangle.vertex(0);
     const Vec3 planeNormal = normalize(subTriangle.normal());
 
-    Vec3u triangleMin = subTriangle.voxelMin();
+    Vec3u32 triangleMin = subTriangle.voxelMin();
     triangleMin = obj2voxel::max(min, triangleMin);
 
-    Vec3u triangleMax = subTriangle.voxelMax();
+    Vec3u32 triangleMax = subTriangle.voxelMax();
     triangleMax = obj2voxel::min(max, triangleMax);
 
-    for (unsigned z = triangleMin.z(); z < triangleMax.z(); ++z) {
-        for (unsigned y = triangleMin.y(); y < triangleMax.y(); ++y) {
-            for (unsigned x = triangleMin.x(); x < triangleMax.x(); ++x) {
-                const Vec3u pos = {x, y, z};
+    for (u32 z = triangleMin.z(); z < triangleMax.z(); ++z) {
+        for (u32 y = triangleMin.y(); y < triangleMax.y(); ++y) {
+            for (u32 x = triangleMin.x(); x < triangleMax.x(); ++x) {
+                const Vec3u32 pos = {x, y, z};
 
                 if constexpr (not DISABLE_PLANE_DISTANCE_TEST) {
                     const Vec3 center = pos + Vec3::filledWith(0.5f);
@@ -518,7 +539,7 @@ void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle)
     uvBuffer.clear();
 }
 
-AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation)
+AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, u32 resolution, Vec3u permutation)
 {
     const Vec3 meshSize = max - min;
     const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
@@ -549,7 +570,7 @@ void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &
 
 void Voxelizer::downscale()
 {
-    constexpr unsigned divisor = 2;
+    constexpr u32 divisor = 2;
 
     VoxelMap<WeightedColor> result;
 
