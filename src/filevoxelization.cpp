@@ -261,10 +261,9 @@ AffineTransform computeTransform(const ITriangleStream &stream, unsigned resolut
 
 // VOXELIZATION MAIN FUNCTIONALITY =====================================================================================
 
-#ifndef OBJ2VOXEL_DISABLE_PARALLELISM
-bool voxelize_impl(Instance &instance, ITriangleStream &stream)
+bool voxelize_parallel(Instance &instance, ITriangleStream &stream, unsigned threadCount)
 {
-    const usize threadCount = std::thread::hardware_concurrency();
+    VXIO_ASSERT_NE(threadCount, 0);
 
     std::vector<std::thread> workers;
     workers.reserve(threadCount);
@@ -313,8 +312,8 @@ bool voxelize_impl(Instance &instance, ITriangleStream &stream)
 
     return true;
 }
-#else
-bool voxelize_impl(Instance &instance, ITriangleStream &stream)
+
+bool voxelize_single(Instance &instance, ITriangleStream &stream)
 {
     // logLevel = LogLevel::SPAM;
 
@@ -341,7 +340,6 @@ bool voxelize_impl(Instance &instance, ITriangleStream &stream)
 
     return true;
 }
-#endif
 
 }  // namespace
 
@@ -366,7 +364,8 @@ bool voxelize(VoxelizationArgs args, ITriangleStream &stream, VoxelSink &sink)
 
     instance.meshTransform = computeTransform(stream, args.resolution, args.permutation);
 
-    return voxelize_impl(instance, stream);
+    return args.workerThreads == 0 ? voxelize_single(instance, stream)
+                                   : voxelize_parallel(instance, stream, args.workerThreads);
 }
 
 }  // namespace obj2voxel

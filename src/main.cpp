@@ -11,6 +11,7 @@
 #include <iostream>
 #include <memory>
 #include <set>
+#include <thread>
 #include <vector>
 
 // MACROS ==============================================================================================================
@@ -30,6 +31,12 @@
 #define OBJ2VOXEL_TEST_STRING(arg, def) arg
 #endif
 
+#ifdef OBJ2VOXEL_DUMP_STL
+#define OBJ2VOXEL_IF_DUMP_STL(code) code
+#else
+#define OBJ2VOXEL_IF_DUMP_STL(code)
+#endif
+
 // IMPLEMENTATION ======================================================================================================
 
 namespace obj2voxel {
@@ -44,6 +51,7 @@ constexpr Vec3u DEFAULT_PERMUTATION = {0, 1, 2};
 int mainImpl(std::string inFile,
              std::string outFile,
              unsigned resolution,
+             unsigned threads = 0,
              std::string textureFile = "",
              bool supersample = DEFAULT_SUPERSAMPLE,
              ColorStrategy colorStrategy = DEFAULT_COLOR_STRATEGY,
@@ -88,14 +96,20 @@ int mainImpl(std::string inFile,
         return 1;
     }
 
-#ifdef OBJ2VOXEL_DUMP_STL
-    globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl;
-#endif
+    if (resolution >= 1024 * 1024) {
+        VXIO_LOG(WARNING, "Very high resolution (" + stringifyLargeInt(resolution) + "), intentional?")
+    }
+    if (threads == 1) {
+        VXIO_LOG(WARNING, "Running with one worker thread is usually pointless; better use -j 0");
+    }
+
+    OBJ2VOXEL_IF_DUMP_STL(globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl);
 
     VoxelizationArgs args;
     args.inFile = std::move(inFile);
     args.texture = std::move(textureFile);
     args.resolution = resolution * (1 + supersample);
+    args.workerThreads = threads;
     args.downscale = supersample;
     args.colorStrategy = colorStrategy;
     args.permutation = permutation;
@@ -106,9 +120,7 @@ int mainImpl(std::string inFile,
 
     int resultCode = not voxelize(args, *triangles, sink);
 
-#ifdef OBJ2VOXEL_DUMP_STL
-    dumpDebugStl("/tmp/obj2voxel_debug.stl");
-#endif
+    OBJ2VOXEL_IF_DUMP_STL(dumpDebugStl("/tmp/obj2voxel_debug.stl"));
 
     return resultCode;
 }
@@ -168,6 +180,10 @@ constexpr const char *PERMUTATION_ARG = "Permutation of xyz axes in the model. (
 constexpr const char *SS_DESCR =
     "Enables supersampling. "
     "The model is voxelized at double resolution and then downscaled while combining colors.";
+constexpr const char *THREADS_DESCR = "Number of worker threads to be started for voxelization. "
+                                      "Set to zero for single-threaded voxelization. "
+                                      "The best choice is usually the number of physical CPU cores. "
+                                      "(Default: CPU threads)";
 
 int main(int argc, char **argv)
 #else
@@ -183,23 +199,25 @@ int main()
 #else
     const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
                                                                      {"blend", ColorStrategy::BLEND}};
+    const unsigned threadCount = std::thread::hardware_concurrency();
 
     args::ArgumentParser parser(HEADER, FOOTER);
 
-    args::Group ggroup(parser, "General Options:");
-    args::HelpFlag helpArg(ggroup, "help", HELP_DESCR, {'h', "help"});
+    auto ggroup = args::Group(parser, "General Options:");
+    auto helpArg = args::HelpFlag(ggroup, "help", HELP_DESCR, {'h', "help"});
 
-    args::Group fgroup(parser, "File Options:");
-    args::Positional<std::string> inFileArg(fgroup, "INPUT_FILE", INPUT_DESCR);
-    args::Positional<std::string> outFileArg(fgroup, "OUTPUT_FILE", OUTPUT_DESCR);
-    args::ValueFlag<std::string> textureArg(fgroup, "texture", TEXTURE_DESCR, {'t'}, "");
+    auto fgroup = args::Group(parser, "File Options:");
+    auto inFileArg = args::Positional<std::string>(fgroup, "INPUT_FILE", INPUT_DESCR);
+    auto outFileArg = args::Positional<std::string>(fgroup, "OUTPUT_FILE", OUTPUT_DESCR);
+    auto textureArg = args::ValueFlag<std::string>(fgroup, "texture", TEXTURE_DESCR, {'t'}, "");
 
-    args::Group vgroup(parser, "Voxelization Options:");
-    args::ValueFlag<unsigned> resolutionArg(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
-    args::MapFlag<std::string, ColorStrategy> strategyArg(
+    auto vgroup = args::Group(parser, "Voxelization Options:");
+    auto resolutionArg = args::ValueFlag<unsigned>(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
+    auto strategyArg = args::MapFlag<std::string, ColorStrategy>(
         vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, DEFAULT_COLOR_STRATEGY);
-    args::ValueFlag<std::string> permutationArg(vgroup, "permutation", PERMUTATION_ARG, {'p'}, "xyz");
-    args::Flag ssArg(vgroup, "supersample", SS_DESCR, {'u'});
+    auto permutationArg = args::ValueFlag<std::string>(vgroup, "permutation", PERMUTATION_ARG, {'p'}, "xyz");
+    auto ssArg = args::Flag(vgroup, "supersample", SS_DESCR, {'u'});
+    auto threadsArg = args::ValueFlag<unsigned>(vgroup, "threads", THREADS_DESCR, {'j'}, threadCount);
 
     bool complete = parser.ParseCLI(argc, argv);
     complete &= parser.Matched();
@@ -222,6 +240,7 @@ int main()
     mainImpl(std::move(inFileArg.Get()),
              std::move(outFileArg.Get()),
              resolutionArg.Get(),
+             threadsArg.Get(),
              std::move(textureArg.Get()),
              ssArg.Get(),
              strategyArg.Get(),

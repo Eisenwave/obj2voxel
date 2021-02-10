@@ -148,7 +148,9 @@ struct SplittingValues {
 };
 
 template <DiscardMode DISCARD_MODE>
-void splitTriangle_decideCase(const TexturedTriangle &t, SplittingValues val, LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+void splitTriangle_decideCase(const TexturedTriangle &t,
+                              SplittingValues val,
+                              LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
 
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_onePlanarCase(const TexturedTriangle &t,
@@ -194,8 +196,8 @@ void splitTriangle(const u32 axis,
 
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_decideCase(const TexturedTriangle &t,
-                        const SplittingValues val,
-                        const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
+                              const SplittingValues val,
+                              const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
 {
     // clang tends to mess up curly brackets and indentation in this function
     // clang-format off

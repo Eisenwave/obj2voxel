@@ -12,6 +12,7 @@ struct VoxelizationArgs {
     std::string inFile;
     std::string texture;
     unsigned resolution;
+    unsigned workerThreads;
     bool downscale;
     ColorStrategy colorStrategy;
     Vec3u permutation;
