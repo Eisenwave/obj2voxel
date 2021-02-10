@@ -32,7 +32,8 @@ add_executable(obj2voxel
     src/filevoxelization.cpp
     src/filevoxelization.hpp
     src/io.cpp
-    src/io.hpp)
+    src/io.hpp
+    include/obj2voxel.h)
 
 add_subdirectory(voxelio)
 target_link_libraries(obj2voxel voxelio ${CMAKE_THREAD_LIBS_INIT})
