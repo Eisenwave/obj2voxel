@@ -45,14 +45,10 @@ is the voxel grid resolution.
 This is a maximum for all axes, meaning that a non-cubical model will still fit into this block.
 The output model will be at most r³ voxels large.
 
-**Example:** `-r 128`
-
 ##### `-s (max|blend)`
 is a coloring strategy for when multiple triangles occupy one voxel.
 See below for more details on how this option impacts the voxels.
 The default is `max`.
-
-**Example:** `-s blend`
 
 ##### `-t <texture>`
 is the optional path to a texture file.
@@ -60,19 +56,24 @@ This texture is used for triangles with UV coordinates but no materials.
 There are some models which don't have material libraries at all.
 This option is very useful for those types of models.
 
-**Example:** `-t path/to/texture.png`
-
 ##### `-p <permutation>`
 is the axis permutation.
 The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
 This is useful for importing models from software where a different axis is being used for "up".
 
-**Example:** `-p xzy`
-
 ##### `-u`
 enables 2x supersampling.
 The model is voxelized at double resolution and then downscaled.
 See below for more details.
+
+##### `-j <threads>`
+is the number of worker threads to be started.
+obj2voxel supports parallelism and if `threads` is not zero, worker threads will be started that voxelize many triangles simultaneously.
+This option is set to the number of hardware threads by default.
+You can also set it exactly to `0`, which disables paralellism completely.
+Setting it to `1` is usually pointless and ends up being slower than just using `-j 0`.
+
+### Usage Example
 
 A usual run of obj2voxel looks like this:
 ![screenshot](img/terminal_screenshot.png)
@@ -153,10 +154,17 @@ while (not end_of_file_reached()) {
 
 ## Performance
 
-obj2voxel can produce up to one million voxels per second in optimal circumstances.
-Any resolution lower than 1000 should be voxelized almost instantly.
+On high-end hardware and with some models, obj2voxel can produce 10 million voxels per second.
+Voxelization is a highly parallel task and scales very well with high thread counts.
+Any resolution lower than 1024 should be voxelized almost instantly, even with a single thread.
 
-The maximum memory consumption is about 64 bytes per voxel.
+The memory consumption of obj2voxel depends on the size of the input model because the model is loaded into memory entirely.
+Certain output formats like PLY, VL32 and XYZRGB can be streamed, meaning that obj2voxel will consume very little memory when producing them.
+Other formats like QEF require a palette to be constructed, so all voxels must be buffered in memory before they can be written.
+This usally requires around 16 bytes per voxel.
+
+The aforementioned streamable formats don't require this and because obj2voxel has a chunk-based approach to voxelization, the memory consumption will be very low.
+Even voxelizing at 8192 resolution might require only 100MB.
 
 ## Approach
 
