@@ -1,0 +1,811 @@
+#include "obj2voxel.h"
+
+#include "io.hpp"
+#include "threading.hpp"
+#include "voxelization.hpp"
+
+#include "voxelio/format/png.hpp"
+#include "voxelio/stringify.hpp"
+
+#include <atomic>
+#include <ostream>
+#include <thread>
+
+namespace obj2voxel {
+namespace {
+
+// WORKER COMMAND ======================================================================================================
+
+enum class CommandType {
+    /// Computes boundaries of a triangle batch and combines with currently known mesh bounds.
+    FIND_MESH_BOUNDS,
+    /// Transforms a triangle and stores its voxel minimum and maximum coordinates.
+    TRANSFORM_TRIANGLES,
+    /// Instructs a worker thread sort a triangle into chunks.
+    SORT_TRIANGLE_INTO_CHUNKS,
+    /// Instructs a worker thread to voxelize a chunk.
+    VOXELIZE_CHUNK,
+    /// Instructs a worker to exit.
+    EXIT
+};
+
+struct WorkerCommand {
+    CommandType type;
+    u32 index;
+};
+
+// COMMAND QUEUE =======================================================================================================
+
+/// Thread-safe queue of worker commands.
+class CommandQueue {
+private:
+    async::RingBuffer<WorkerCommand, 128> buffer;
+    async::Counter<uintmax_t> commandCounter;
+
+public:
+    /// Signals completion of one command. To be called by workers.
+    void complete()
+    {
+        --commandCounter;
+    }
+
+    /// Receives one command. To be called by workers.
+    WorkerCommand receive()
+    {
+        return buffer.pop();
+    }
+
+    /// Issues a command to workers. To be called by main thread.
+    void issue(WorkerCommand command)
+    {
+        ++commandCounter;
+        buffer.push(std::move(command));
+    }
+
+    /// Waits until all commands have been completed.
+    void waitForCompletion()
+    {
+        commandCounter.waitUntilZero();
+    }
+};
+
+// INSTANCE DEFINITION =================================================================================================
+
+struct TypedFile {
+    const char *path;
+    voxelio::FileType type;
+};
+
+template <typename Callback>
+struct CallbackWithData {
+    Callback callback;
+    void *callbackData;
+};
+
+template <typename Callback>
+struct FileOrCallback {
+    bool isFile;
+    union {
+        TypedFile file;
+        CallbackWithData<Callback> callback;
+    };
+
+    FileOrCallback() : isFile{true}, file{nullptr, voxelio::FileType{0}} {}
+
+    FileOrCallback(TypedFile file) : isFile{true}, file{file} {}
+
+    FileOrCallback(CallbackWithData<Callback> callback) : isFile{false}, callback{callback} {}
+
+    bool isPresent() const
+    {
+        return not isFile || file.path != nullptr;
+    }
+};
+
+struct CachedTriangle : public VisualTriangle {
+    Vec3u32 chunkMin;
+    Vec3u32 chunkMax;
+
+    void transform(const AffineTransform &transform)
+    {
+        for (usize i = 0; i < 3; ++i) {
+            v[i] = transform * v[i];
+        }
+    }
+};
+
+}  // namespace
+}  // namespace obj2voxel
+
+using namespace obj2voxel;
+
+/**
+ * @brief A struct that stores all shared state between the main thread and its workers.
+ */
+struct obj2voxel_instance {
+    // configurable
+    std::map<std::string, obj2voxel_texture> textures;
+    FileOrCallback<obj2voxel_triangle_callback> input;
+    FileOrCallback<obj2voxel_voxel_callback> output;
+    IVoxelSink *voxelSink = nullptr;
+    Vec3f meshMin = Vec3f::filledWith(std::numeric_limits<float>::infinity());
+    Vec3f meshMax = -meshMin;
+    ColorStrategy colorStrategy = ColorStrategy::MAX;
+    uint32_t outputResolution = 0;
+    uint32_t sampleResolution = 0;
+    uint32_t supersampling = 1;
+    bool parallel = false;
+    bool boundsKnown = false;
+    int unitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+    // initialized during voxelization
+    std::vector<CachedTriangle> triangles;
+    std::unordered_map<uint64_t, std::vector<uint32_t>> chunks;
+    uint32_t chunkCount = 0;
+
+    // threading
+    AffineTransform meshTransform;
+    CommandQueue queue;
+    std::mutex sinkMutex;
+    std::mutex workerMutex;
+    std::mutex boundsMutex;
+    uint32_t workerCount = 0;
+};
+
+// ALGORITHM ===========================================================================================================
+
+namespace obj2voxel {
+namespace {
+
+constexpr u32 CHUNK_SIZE = 64;
+constexpr u32 BATCH_SIZE = 1024;
+
+void findMeshBounds(obj2voxel_instance &instance, u32 batchStartIndex)
+{
+    VXIO_DEBUG_ASSERT_LT(batchStartIndex, instance.triangles.size());
+
+    const usize end = std::min(instance.triangles.size(), batchStartIndex + usize{BATCH_SIZE});
+
+    auto min = Vec3::filledWith(std::numeric_limits<real_type>::infinity());
+    auto max = -min;
+
+    for (usize i = batchStartIndex; i < end; ++i) {
+        const CachedTriangle &triangle = instance.triangles[i];
+        min = obj2voxel::min(triangle.min(), min);
+        max = obj2voxel::max(triangle.max(), max);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock{instance.boundsMutex};
+        instance.meshMin = obj2voxel::min(instance.meshMin, min);
+        instance.meshMax = obj2voxel::max(instance.meshMax, max);
+    }
+}
+
+void applyMeshTransform(obj2voxel_instance &instance, u32 batchStartIndex)
+{
+    VXIO_DEBUG_ASSERT_LT(batchStartIndex, instance.triangles.size());
+
+    const usize end = std::min(instance.triangles.size(), batchStartIndex + usize{BATCH_SIZE});
+    for (usize i = batchStartIndex; i < end; ++i) {
+        CachedTriangle &triangle = instance.triangles[i];
+        triangle.transform(instance.meshTransform);
+
+        const Vec3u32 voxelMin = triangle.voxelMin();
+        const Vec3u32 voxelMax = triangle.voxelMax();
+
+        // TODO does this min really work when a triangle is exactly on a chunk boundary?
+        // TODO investigate a model with a plane that halves it, see if plane is voxelized if it lies between chunks
+
+        // voxelMax() returns an exclusive bound which we need to make inclusive again
+        triangle.chunkMin = voxelMin / CHUNK_SIZE;
+        triangle.chunkMax = (voxelMax - Vec3u32::one()) / CHUNK_SIZE;
+
+        VXIO_IF_DEBUG(Vec3u32 chunkMaxInVoxelSpace = triangle.chunkMax * CHUNK_SIZE + Vec3u32::filledWith(CHUNK_SIZE));
+        VXIO_DEBUG_ASSERTM(obj2voxel::min(voxelMax, chunkMaxInVoxelSpace) == voxelMax, "Potentially lost voxels");
+    }
+}
+
+void sortTriangleIntoChunks(obj2voxel_instance &instance, u32 triangleIndex)
+{
+    VXIO_DEBUG_ASSERT_LT(triangleIndex, instance.triangles.size());
+
+    const CachedTriangle &triangle = instance.triangles[triangleIndex];
+    const Vec3u32 min = triangle.chunkMin;
+    const Vec3u32 max = triangle.chunkMax;
+
+    for (u32 z = min.z(); z <= max.z(); ++z) {
+        for (u32 y = min.y(); y <= max.y(); ++y) {
+            for (u32 x = min.x(); x <= max.x(); ++x) {
+                u64 morton = ileave3(x, y, z);
+                VXIO_DEBUG_ASSERT_LT(morton, instance.chunkCount);
+                instance.chunks[morton].push_back(triangleIndex);
+            }
+        }
+    }
+}
+
+void computeChunkBounds(u64 morton, Vec3u32 &outMin, Vec3u32 &outMax)
+{
+    Vec3u32 chunkPos;
+    dileave3(morton, chunkPos.data());
+
+    outMin = chunkPos * CHUNK_SIZE;
+    outMax = outMin + Vec3u32::filledWith(CHUNK_SIZE);
+}
+
+void voxelizeChunk(obj2voxel_instance &instance, Voxelizer &voxelizer, u32 chunkIndex)
+{
+    VXIO_ASSERT(voxelizer.voxels().empty());
+
+    const std::vector<u32> &chunk = instance.chunks.at(chunkIndex);
+
+    Vec3u32 chunkMin, chunkMax;
+    computeChunkBounds(chunkIndex, chunkMin, chunkMax);
+    VXIO_ASSERT(chunkMin != chunkMax);
+
+    for (u32 triangle : chunk) {
+        voxelizer.voxelize(instance.triangles[triangle], chunkMin, chunkMax);
+    }
+
+    if (instance.supersampling > 1) {
+        VXIO_ASSERT_LT(instance.supersampling, 3);
+        voxelizer.downscale();
+    }
+
+    const usize voxelCount = voxelizer.voxels().size();
+    // TODO consider making this a member of worker thread instead
+    const auto buffer = std::make_unique<Voxel32[]>(voxelCount);
+
+    u32 i = 0;
+    for (auto [index, color] : voxelizer.voxels()) {
+        Vec3u32 pos32 = VoxelMap<WeightedColor>::posOf(index);
+        if constexpr (build::DEBUG) {
+            VXIO_DEBUG_ASSERT_EQ(index / (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE), chunkIndex);
+            for (usize i = 0; i < 3; ++i) {
+                VXIO_DEBUG_ASSERT_GE(pos32[i], chunkMin[i]);
+                VXIO_DEBUG_ASSERT_LT(pos32[i], chunkMax[i]);
+            }
+        }
+
+        Color32 color32{color.value};
+        buffer[i++] = {pos32.cast<i32>(), {color32.argb()}};
+    }
+    VXIO_ASSERT_EQ(i, voxelCount);
+    {
+        std::lock_guard<std::mutex> lock{instance.sinkMutex};
+        instance.voxelSink->write(buffer.get(), voxelCount);
+    }
+    VXIO_LOG(SPAM,
+             "Voxelized chunk " + stringifyOct(chunkIndex) + " t:" + stringifyDec(chunk.size()) + " -> " +
+                 stringifyDec(voxelCount));
+
+    voxelizer.voxels().clear();
+}
+
+// MAIN THREAD UTILITY =================================================================================================
+
+voxelio::FileType detectFileType(const char *file, const char *type)
+{
+    std::optional<voxelio::FileType> fileType;
+    if (type != nullptr) {
+        std::string typeStr{type};
+        fileType = voxelio::fileTypeOfExtension(typeStr);
+        VXIO_ASSERTM(fileType.has_value(), typeStr + " is not a recognized file extension");
+    }
+    else if (file != nullptr) {
+        std::string fileStr{file};
+        fileType = voxelio::detectFileType(file);
+        VXIO_ASSERTM(fileType.has_value(), fileStr + " does not have a recognizable extension");
+    }
+    else {
+        VXIO_ASSERTM(false, "Neither file path nor type were given");
+    }
+
+    return *fileType;
+}
+
+constexpr ColorFormat colorFormatOfChannelCount(size_t channels)
+{
+    switch (channels) {
+    case 3: return ColorFormat::RGB24;
+    case 4: return ColorFormat::ARGB32;
+    }
+    VXIO_ASSERT_UNREACHABLE();
+}
+
+// VOXELIZATION MAIN FUNCTIONALITY =====================================================================================
+
+/// A specialized class that implements stages of the voxelization pipeline in either parallel or single-threaded way.
+template <bool PARALLEL>
+struct VoxelizationHelper {
+    void voxelizeChunk(u32 chunkIndex);
+    void findMeshBounds(u32 batchStartIndex);
+    void transformTriangles(u32 batchStartIndex);
+    void waitForCompletion();
+};
+
+template <>
+struct VoxelizationHelper<true> {
+    obj2voxel_instance &instance;
+
+    void voxelizeChunk(u32 chunkIndex)
+    {
+        if (instance.chunks.find(chunkIndex) != instance.chunks.end()) {
+            instance.queue.issue({CommandType::VOXELIZE_CHUNK, chunkIndex});
+        }
+    }
+
+    void findMeshBounds(u32 batchStartIndex)
+    {
+        instance.queue.issue({CommandType::FIND_MESH_BOUNDS, batchStartIndex});
+    }
+
+    void transformTriangles(u32 batchStartIndex)
+    {
+        instance.queue.issue({CommandType::TRANSFORM_TRIANGLES, batchStartIndex});
+    }
+
+    void waitForCompletion()
+    {
+        instance.queue.waitForCompletion();
+    }
+};
+
+template <>
+struct VoxelizationHelper<false> {
+    obj2voxel_instance &instance;
+    Voxelizer voxelizer{instance.colorStrategy};
+
+    void voxelizeChunk(u32 chunkIndex)
+    {
+        if (instance.chunks.find(chunkIndex) != instance.chunks.end()) {
+            obj2voxel::voxelizeChunk(instance, voxelizer, chunkIndex);
+        }
+    }
+
+    void findMeshBounds(u32 batchStartIndex)
+    {
+        obj2voxel::findMeshBounds(instance, batchStartIndex);
+    }
+
+    void transformTriangles(u32 batchStartIndex)
+    {
+        obj2voxel::applyMeshTransform(instance, batchStartIndex);
+    }
+
+    void waitForCompletion() {}
+};
+
+template <bool PARALLEL>
+void voxelize_specialized(obj2voxel_instance &instance)
+{
+    VoxelizationHelper<PARALLEL> helper{instance};
+
+    VXIO_LOG(DEBUG, "Sorting triangles into chunks ...");
+    const usize triangleCount = instance.triangles.size();
+
+    for (u32 i = 0; i < triangleCount; i += BATCH_SIZE) {
+        helper.findMeshBounds(i);
+    }
+    helper.waitForCompletion();
+
+    instance.meshTransform = Voxelizer::computeTransform(
+        instance.meshMin, instance.meshMax, instance.sampleResolution, instance.unitTransform);
+
+    for (u32 i = 0; i < triangleCount; i += BATCH_SIZE) {
+        helper.transformTriangles(i);
+    }
+    helper.waitForCompletion();
+
+    for (u32 i = 0; i < triangleCount; ++i) {
+        sortTriangleIntoChunks(instance, i);
+    }
+
+    if (instance.supersampling > 1) {
+        VXIO_LOG(INFO,
+                 "Chunks will be downscaled from " + stringifyLargeInt(instance.sampleResolution) +
+                     " to output resolution " + stringifyLargeInt(instance.outputResolution) + " ...");
+    }
+
+    helper.waitForCompletion();
+
+    VXIO_LOG(DEBUG, "Voxelizing ...");
+    // TODO consider simply iterating over pairs instead
+    for (u32 i = 0; i < instance.chunkCount; ++i) {
+        helper.voxelizeChunk(i);
+    }
+
+    helper.waitForCompletion();
+
+    VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(triangleCount) + " triangles, writing any buffered voxels ...");
+
+    instance.voxelSink->finalize();
+
+    VXIO_LOG(INFO, "All " + stringifyLargeInt(instance.voxelSink->voxelsWritten()) + " voxels written");
+    VXIO_LOG(INFO, "Done!");
+}
+
+void voxelize(obj2voxel_instance &instance, ITriangleStream &stream, IVoxelSink &sink)
+{
+    u32 chunkCountCbrt = divCeil(instance.sampleResolution, CHUNK_SIZE);
+    instance.chunkCount = chunkCountCbrt * chunkCountCbrt * chunkCountCbrt;
+
+    instance.voxelSink = &sink;
+
+    VXIO_LOG(DEBUG, "Caching triangles ...");
+
+    CachedTriangle triangle{};
+    while (stream.next(triangle)) {
+        instance.triangles.push_back(triangle);
+    }
+
+    if (instance.triangles.empty()) {
+        VXIO_LOG(WARNING, "Model has no triangles, aborting and writing empty voxel model");
+        sink.finalize();
+        return;
+    }
+    VXIO_LOG(INFO, "Cached model with " + stringifyLargeInt(instance.triangles.size()) + " triangles");
+
+    return instance.parallel ? voxelize_specialized<true>(instance) : voxelize_specialized<false>(instance);
+}
+
+std::unique_ptr<ITriangleStream> openInput(obj2voxel_instance &instance)
+{
+    FileOrCallback<obj2voxel_triangle_callback> &input = instance.input;
+
+    VXIO_ASSERT(input.isPresent());
+
+    if (not input.isFile) {
+        return ITriangleStream::fromCallback(input.callback.callback, input.callback.callbackData);
+    }
+
+    switch (input.file.type) {
+    case FileType::WAVEFRONT_OBJ: {
+        auto defaultPos = instance.textures.find("");
+        Texture *defaultTexture = defaultPos != instance.textures.end() ? &defaultPos->second : nullptr;
+
+        return ITriangleStream::fromObjFile(input.file.path, defaultTexture);
+    }
+    case FileType::STEREOLITHOGRAPHY: return ITriangleStream::fromStlFile(input.file.path);
+    default: return nullptr;
+    }
+}
+
+std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
+{
+    FileOrCallback<obj2voxel_voxel_callback> &output = instance.output;
+
+    VXIO_ASSERT(output.isPresent());
+
+    if (not output.isFile) {
+        return IVoxelSink::fromCallback(output.callback.callback, output.callback.callbackData);
+    }
+
+    std::optional<FileOutputStream> stream = FileOutputStream::open(output.file.path, OpenMode::BINARY);
+    if (not stream.has_value()) {
+        return nullptr;
+    }
+
+    std::unique_ptr<OutputStream> streamPtr{new FileOutputStream{std::move(*stream)}};
+
+    return IVoxelSink::fromVoxelio(std::move(streamPtr), output.file.type, instance.outputResolution);
+}
+
+obj2voxel_error_t voxelize(obj2voxel_instance &instance)
+{
+    if (not instance.input.isPresent()) {
+        return OBJ2VOXEL_ERR_NO_INPUT;
+    }
+    if (not instance.output.isPresent()) {
+        return OBJ2VOXEL_ERR_NO_OUTPUT;
+    }
+
+    std::unique_ptr<ITriangleStream> input = openInput(instance);
+    if (input == nullptr) {
+        return OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE;
+    }
+
+    std::unique_ptr<IVoxelSink> output = openOutput(instance);
+    if (output == nullptr) {
+        return OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE;
+    }
+
+    voxelize(instance, *input, *output);
+
+    return OBJ2VOXEL_ERR_OK;
+}
+
+LogLevel voxelioLogLevelOf(obj2voxel_enum_t level)
+{
+    switch (level) {
+    case OBJ2VOXEL_LOG_LEVEL_SILENT: return LogLevel::NONE;
+    case OBJ2VOXEL_LOG_LEVEL_ERROR: return LogLevel::ERROR;
+    case OBJ2VOXEL_LOG_LEVEL_WARNING: return LogLevel::WARNING;
+    case OBJ2VOXEL_LOG_LEVEL_INFO: return LogLevel::INFO;
+    case OBJ2VOXEL_LOG_LEVEL_DEBUG: return LogLevel::DEBUG;
+    }
+    VXIO_ASSERT_UNREACHABLE();
+}
+
+obj2voxel_enum_t obj2voxelLogLevelOf(LogLevel level)
+{
+    switch (level) {
+    case LogLevel::NONE: return OBJ2VOXEL_LOG_LEVEL_SILENT;
+    case LogLevel::ERROR: return OBJ2VOXEL_LOG_LEVEL_ERROR;
+    case LogLevel::WARNING: return OBJ2VOXEL_LOG_LEVEL_WARNING;
+    case LogLevel::INFO: return OBJ2VOXEL_LOG_LEVEL_INFO;
+    default: return OBJ2VOXEL_LOG_LEVEL_DEBUG;
+    }
+}
+
+static obj2voxel_log_callback logCallback = nullptr;
+static void *logCallbackData = nullptr;
+
+}  // namespace
+}  // namespace obj2voxel
+
+// API IMPLEMENTATION ==================================================================================================
+
+obj2voxel_instance *obj2voxel_alloc(void)
+{
+    return new obj2voxel_instance;
+}
+
+void obj2voxel_free(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    delete instance;
+}
+
+void obj2voxel_set_log_level(obj2voxel_enum_t level)
+{
+    setLogLevel(voxelioLogLevelOf(level));
+}
+
+void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data)
+{
+    if (callback == nullptr) {
+        voxelio::setLogFormatter(nullptr);
+    }
+
+    logCallback = callback;
+    logCallbackData = callback_data;
+
+    voxelio::setLogFormatter([](const char *msg, LogLevel level, SourceLocation location) -> void {
+        if (not logCallback(logCallbackData, msg, obj2voxelLogLevelOf(level))) {
+            defaultFormat(msg, level, location);
+        }
+    });
+}
+
+void obj2voxel_set_resolution(obj2voxel_instance *instance, uint32_t resolution)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NE(resolution, 0);
+    instance->outputResolution = resolution;
+    instance->sampleResolution = resolution * instance->supersampling;
+}
+
+void obj2voxel_set_supersampling(obj2voxel_instance *instance, uint32_t level)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NE(level, 0);
+    instance->supersampling = level;
+    instance->sampleResolution = instance->outputResolution * instance->supersampling;
+}
+
+void obj2voxel_set_color_strategy(obj2voxel_instance *instance, obj2voxel_enum_t strategy)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_LT(strategy, 2);
+    instance->colorStrategy = strategy == OBJ2VOXEL_MAX_STRATEGY ? ColorStrategy::MAX : ColorStrategy::BLEND;
+}
+
+void obj2voxel_move_texture(obj2voxel_instance *instance, const char *name, obj2voxel_texture *texture)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(name);
+    VXIO_ASSERT_NOTNULL(texture);
+    instance->textures.emplace(name, std::move(*texture));
+}
+
+void obj2voxel_set_input_file(obj2voxel_instance *instance, const char *file, const char *type)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(file);
+
+    instance->input = TypedFile{file, detectFileType(file, type)};
+}
+
+void obj2voxel_set_input_callback(obj2voxel_instance *instance,
+                                  obj2voxel_triangle_callback callback,
+                                  void *callback_data)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(callback);
+
+    instance->input = CallbackWithData<obj2voxel_triangle_callback>{callback, callback_data};
+}
+
+void obj2voxel_set_output_file(obj2voxel_instance *instance, const char *file, const char *type)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(file);
+
+    instance->output = TypedFile{file, detectFileType(file, type)};
+}
+
+void obj2voxel_set_output_callback(obj2voxel_instance *instance, obj2voxel_voxel_callback callback, void *callback_data)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(callback);
+
+    instance->output = CallbackWithData<obj2voxel_voxel_callback>{callback, callback_data};
+}
+
+void obj2voxel_set_parallel(obj2voxel_instance *instance, bool enabled)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    instance->parallel = enabled;
+}
+
+void obj2voxel_set_unit_transform(obj2voxel_instance *instance, int transform[9])
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(transform);
+    std::memcpy(instance->unitTransform, transform, sizeof(instance->unitTransform));
+}
+
+void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, float bounds[6])
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(bounds);
+    instance->meshMin = Vec3f{bounds};
+    instance->meshMax = Vec3f{bounds + 3};
+}
+
+obj2voxel_texture *obj2voxel_texture_alloc(void)
+{
+    return new obj2voxel_texture;
+}
+
+void obj2voxel_texture_free(obj2voxel_texture *texture)
+{
+    VXIO_ASSERT_NOTNULL(texture);
+    delete texture;
+}
+
+bool obj2voxel_texture_load_from_file(obj2voxel_texture *texture, const char *file, const char *type)
+{
+    VXIO_ASSERT_NOTNULL(texture);
+    VXIO_ASSERT_NOTNULL(file);
+    FileType fileType = detectFileType(file, type);
+    if (categoryOf(fileType) != FileTypeCategory::IMAGE) {
+        return false;
+    }
+
+    std::optional<FileInputStream> fileStream = FileInputStream::open(file, OpenMode::BINARY);
+    if (not fileStream.has_value()) {
+        return false;
+    }
+    std::string error;
+    std::optional<Image> image = voxelio::png::decode(*fileStream, 4, error);
+    if (not image.has_value()) {
+        return false;
+    }
+    texture->image = std::move(image);
+
+    return true;
+}
+
+bool obj2voxel_texture_load_from_memory(obj2voxel_texture *texture,
+                                        const obj2voxel_byte_t *data,
+                                        size_t size,
+                                        const char *type)
+{
+    VXIO_ASSERT_NOTNULL(texture);
+    VXIO_ASSERT_NOTNULL(data);
+    FileType fileType = detectFileType(nullptr, type);
+    if (categoryOf(fileType) != FileTypeCategory::IMAGE) {
+        return false;
+    }
+
+    std::string error;
+    std::optional<Image> image = voxelio::png::decode(data, size, 4, error);
+    if (not image.has_value()) {
+        return false;
+    }
+    texture->image = std::move(image);
+
+    return true;
+}
+
+bool obj2voxel_texture_load_pixels(
+    obj2voxel_texture *texture, const obj2voxel_byte_t *pixels, size_t width, size_t height, size_t channels)
+{
+    VXIO_ASSERT_NOTNULL(texture);
+    VXIO_ASSERT_NOTNULL(pixels);
+    VXIO_ASSERT_LT(channels, 5);
+    VXIO_ASSERT_GT(channels, 0);
+
+    size_t size = size_t{width} * height * channels;
+    auto data = std::make_unique<uint8_t[]>(size);
+    std::memcpy(data.get(), pixels, size);
+    texture->image = voxelio::Image{width, height, colorFormatOfChannelCount(channels), std::move(data)};
+    return true;
+}
+
+void obj2voxel_teture_set_uv_mode(obj2voxel_texture *texture, obj2voxel_enum_t mode)
+{
+    VXIO_ASSERTM(texture->image.has_value(), "Can't set UV mode of empty texture");
+    auto wrapMode = mode == OBJ2VOXEL_UV_CLAMP ? voxelio::WrapMode::CLAMP : voxelio::WrapMode::REPEAT;
+    texture->image->setWrapMode(wrapMode);
+}
+
+void obj2voxel_texture_get_meta(obj2voxel_texture *texture, size_t *out_width, size_t *out_height, size_t *out_channels)
+{
+    VXIO_ASSERT_NOTNULL(texture);
+    VXIO_ASSERTM(texture->image.has_value(), "Can't get metadata of empty image");
+    *out_width = texture->image->width();
+    *out_height = texture->image->height();
+    *out_channels = voxelio::channelCountOf(texture->image->format());
+}
+
+void obj2voxel_texture_get_pixels(obj2voxel_texture *texture, obj2voxel_byte_t *out_pixels)
+{
+    VXIO_ASSERT_NOTNULL(texture);
+    VXIO_ASSERT_NOTNULL(out_pixels);
+    VXIO_ASSERTM(texture->image.has_value(), "Can't get pixels of empty image");
+    std::memcpy(out_pixels, texture->image->data(), texture->image->dataSize());
+}
+
+obj2voxel_error_t obj2voxel_voxelize(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    return obj2voxel::voxelize(*instance);
+}
+
+void obj2voxel_run_worker(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    using namespace obj2voxel;
+
+    {
+        std::lock_guard<std::mutex> lock{instance->workerMutex};
+        ++instance->workerCount;
+    }
+
+    Voxelizer voxelizer{instance->colorStrategy};
+
+    VXIO_LOG(DEBUG, "VoxelizerThread " + voxelio::stringify(std::this_thread::get_id()) + " started");
+    bool looping = true;
+    do {
+        WorkerCommand command = instance->queue.receive();
+        switch (command.type) {
+        case CommandType::FIND_MESH_BOUNDS: findMeshBounds(*instance, command.index); break;
+        case CommandType::TRANSFORM_TRIANGLES: applyMeshTransform(*instance, command.index); break;
+        case CommandType::VOXELIZE_CHUNK: voxelizeChunk(*instance, voxelizer, command.index); break;
+        case CommandType::SORT_TRIANGLE_INTO_CHUNKS: sortTriangleIntoChunks(*instance, command.index); break;
+        case CommandType::EXIT: looping = false; break;
+        }
+        instance->queue.complete();
+    } while (looping);
+}
+
+void obj2voxel_stop_workers(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    std::lock_guard<std::mutex> lock{instance->workerMutex};
+
+    for (; instance->workerCount != 0; --instance->workerCount) {
+        instance->queue.issue({CommandType::EXIT, 0});
+    }
+}
+
+uint32_t obj2voxel_get_worker_count(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    std::lock_guard<std::mutex> lock{instance->workerMutex};
+    return instance->workerCount;
+}

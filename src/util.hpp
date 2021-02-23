@@ -212,17 +212,56 @@ struct VoxelMap : public voxel_map_base_type<u64, T> {
 struct AffineTransform {
     using vec_type = Vec<real_type, 3>;
 
+    static constexpr AffineTransform fromUnitTransform(int matrix[9], vec_type translation = vec_type::zero())
+    {
+        VXIO_DEBUG_ASSERT_NOTNULL(matrix);
+        AffineTransform result{};
+        for (usize i = 0; i < 9; ++i) {
+            result.matrix[i / 3][i % 3] = static_cast<real_type>(matrix[i]);
+        }
+        result.translation = translation;
+        return result;
+    }
+
     vec_type matrix[3];
     vec_type translation;
 
-    constexpr vec_type apply(vec_type v) const
+    constexpr AffineTransform(float scale = 1, vec_type translation = vec_type::zero())
+        : matrix{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, translation{translation}
     {
-        real_type x = dot(matrix[0], v);
-        real_type y = dot(matrix[1], v);
-        real_type z = dot(matrix[2], v);
-        return vec_type{x, y, z} + translation;
+    }
+
+    constexpr vec_type row(usize i) const
+    {
+        return matrix[i];
+    }
+
+    constexpr vec_type col(usize j) const
+    {
+        return {matrix[0][j], matrix[1][j], matrix[2][j]};
     }
 };
+
+constexpr AffineTransform::vec_type operator*(const AffineTransform &a, const AffineTransform::vec_type &v)
+{
+    real_type x = dot(a.row(0), v);
+    real_type y = dot(a.row(1), v);
+    real_type z = dot(a.row(2), v);
+    return AffineTransform::vec_type{x, y, z} + a.translation;
+}
+
+constexpr AffineTransform operator*(const AffineTransform &lhs, const AffineTransform &rhs)
+{
+    AffineTransform result{};
+    for (usize i = 0; i < 3; ++i) {
+        for (usize j = 0; j < 3; ++j) {
+            result.matrix[i][j] = dot(lhs.row(i), rhs.col(j));
+        }
+        result.translation[i] = dot(lhs.row(i), rhs.translation);
+    }
+    result.translation += lhs.translation;
+    return result;
+}
 
 }  // namespace obj2voxel
 

@@ -1,5 +1,5 @@
-#include "filevoxelization.hpp"
 #include "io.hpp"
+#include "voxelization.hpp"
 
 #include "3rd_party/args.hpp"
 
@@ -105,23 +105,52 @@ int mainImpl(std::string inFile,
 
     OBJ2VOXEL_IF_DUMP_STL(globalTriangleDebugCallback = writeTriangleAsBinaryToDebugStl);
 
-    VoxelizationArgs args;
-    args.inFile = std::move(inFile);
-    args.texture = std::move(textureFile);
-    args.resolution = resolution * (1 + supersample);
-    args.workerThreads = threads;
-    args.downscale = supersample;
-    args.colorStrategy = colorStrategy;
-    args.permutation = permutation;
+    obj2voxel_instance *instance = obj2voxel_alloc();
 
-    std::unique_ptr<ITriangleStream> triangles =
-        *inType == FileType::WAVEFRONT_OBJ ? loadObj(args.inFile, args.texture) : loadStl(args.inFile);
-    VoxelSink sink{*outStream, *outType, resolution};
+    std::vector<std::thread> workers;
+    workers.reserve(threads);
 
-    int resultCode = not voxelize(args, *triangles, sink);
+    VXIO_LOG(DEBUG, "Starting up worker threads ...");
+
+    for (usize i = 0; i < threads; ++i) {
+        auto &worker = workers.emplace_back(&obj2voxel_run_worker, instance);
+        VXIO_ASSERT(worker.joinable());
+    }
+
+    obj2voxel_set_parallel(instance, threads != 0);
+    obj2voxel_set_input_file(instance, inFile.c_str(), nullptr);
+    obj2voxel_set_output_file(instance, outFile.c_str(), nullptr);
+
+    obj2voxel_texture *texture = nullptr;
+    if (not textureFile.empty()) {
+        texture = obj2voxel_texture_alloc();
+        obj2voxel_texture_load_from_file(texture, textureFile.c_str(), nullptr);
+    }
+
+    int unitTransform[9]{};
+    for (usize i = 0; i < 3; ++i) {
+        unitTransform[i * 3 + permutation[i]] = 1;
+    }
+    obj2voxel_set_unit_transform(instance, unitTransform);
+
+    obj2voxel_set_resolution(instance, resolution);
+    obj2voxel_set_supersampling(instance, 1 + supersample);
+    obj2voxel_set_color_strategy(instance, static_cast<obj2voxel_enum_t>(colorStrategy));
+
+    obj2voxel_error_t resultCode = obj2voxel_voxelize(instance);
 
     OBJ2VOXEL_IF_DUMP_STL(dumpDebugStl("/tmp/obj2voxel_debug.stl"));
 
+    obj2voxel_stop_workers(instance);
+    for (auto &worker : workers) {
+        worker.join();
+    }
+
+    if (texture != nullptr) {
+        obj2voxel_texture_free(texture);
+    }
+
+    obj2voxel_free(instance);
     return resultCode;
 }
 
@@ -130,11 +159,11 @@ void initLogging()
     constexpr bool asyncLogging = true;
 
     if constexpr (voxelio::build::DEBUG) {
-        voxelio::logLevel = LogLevel::DEBUG;
+        setLogLevel(LogLevel::DEBUG);
         VXIO_LOG(DEBUG, "Running debug build");
     }
 
-    setLogCallback(nullptr, asyncLogging);
+    setLogBackend(nullptr, asyncLogging);
 }
 
 // CLI ARGUMENT PARSING ================================================================================================

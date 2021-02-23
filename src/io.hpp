@@ -25,82 +25,54 @@ void dumpDebugStl(const std::string &path);
  * internal format.
  */
 struct ITriangleStream {
+    static std::unique_ptr<ITriangleStream> fromCallback(obj2voxel_triangle_callback callback, void *callbackData);
+
+    /**
+     * @brief Loads an OBJ file from disk.
+     * @param inFile the input file
+     * @param textureFile the default texture file, to be used for vertices with no material but UV coordinates
+     * @return the OBJ triangle stream or nullptr if the file couldn't be opened
+     */
+    static std::unique_ptr<ITriangleStream> fromObjFile(const std::string &inFile, const Texture *defaultTexture);
+
+    /**
+     * @brief Loads an STL file from disk.
+     * The result is a vector of triangle vertices.
+     * Each nine coordinates in the vector are one triangle.
+     * No normals are stored in the vector.
+     * @param inFile the input file path
+     * @return the STL triangle stream or nullptr if the file couldn't be opened
+     */
+    static std::unique_ptr<ITriangleStream> fromStlFile(const std::string &inFile);
+
     /// virtual destructor
-    virtual ~ITriangleStream() = default;
+    virtual ~ITriangleStream();
 
     /// Returns the next triangle.
-    /// The behavior of this method is undefined if hasNext() is not true.
-    virtual VisualTriangle next() = 0;
-
-    /// Returns true if the stream has at least one more triangle.
-    virtual bool hasNext() = 0;
-
-    /// Returns the number of vertices in the inderlying mesh.
-    virtual usize vertexCount() const = 0;
-
-    /// Returns the begin of the flattened vertex data.
-    virtual const f32 *vertexBegin() const = 0;
+    virtual bool next(VisualTriangle &out) = 0;
 };
 
-/**
- * @brief A Java-style iterator/stream which can be used to stream through the triangles of a mesh regardless of
- * internal format.
- * This stream abstracts from all voxelio specifics such as palettes.
- *
- * Only formats that don't use palettes such as VL32 and XYZRGB can be streamed directly to disk.
- * For other formats like QEF, the full palette must be built before anything can be written.
- * This results in ALL voxels being dumped into a std::vector until flush() is called.
- */
-struct VoxelSink {
-private:
-    static constexpr usize BUFFER_SIZE = 8192;
+struct IVoxelSink {
+    static std::unique_ptr<IVoxelSink> fromCallback(obj2voxel_voxel_callback callback, void *callbackData);
+    static std::unique_ptr<IVoxelSink> fromVoxelio(std::unique_ptr<OutputStream> out,
+                                                   FileType outFormat,
+                                                   usize resolution);
 
-    std::unique_ptr<AbstractListWriter> writer;
-    const bool usePalette;
-    std::vector<Voxel32> buffer;
-    ResultCode err = ResultCode::OK;
-    usize voxelCount = 0;
-
-public:
-    VoxelSink(OutputStream &out, FileType outFormat, usize resolution);
-
-    /// Destroys the sink. This calls flush(), which can fail.
-    /// To avoid errors in the destructor, flush() should be called manually before destruction.
-    ~VoxelSink()
-    {
-        flush();
-    }
+    /// Virtual destructor, flushes the sink.
+    virtual ~IVoxelSink();
 
     /// Returns true if the writer has not encountered any errors yet and the sink can take more voxels.
-    bool canWrite()
-    {
-        return err == ResultCode::OK;
-    }
+    virtual bool canWrite() const = 0;
+
+    /// Returns the total number of voxels written to the sink.
+    virtual usize voxelsWritten() const = 0;
 
     /// Writes a buffer of voxels to the sink.
-    void write(Voxel32 voxels[], usize size);
+    virtual void write(Voxel32 voxels[], usize size) = 0;
 
     /// Flushes the sink.
-    void flush();
+    virtual void finalize() = 0;
 };
-
-/**
- * @brief Loads an OBJ file from disk.
- * @param inFile the input file
- * @param textureFile the default texture file, to be used for vertices with no material but UV coordinates
- * @return the OBJ triangle stream or nullptr if the file couldn't be opened
- */
-std::unique_ptr<ITriangleStream> loadObj(const std::string &inFile, const std::string &textureFile);
-
-/**
- * @brief Loads an STL file from disk.
- * The result is a vector of triangle vertices.
- * Each nine coordinates in the vector are one triangle.
- * No normals are stored in the vector.
- * @param inFile the input file path
- * @return the STL triangle stream or nullptr if the file couldn't be opened
- */
-std::unique_ptr<ITriangleStream> loadStl(const std::string &inFile);
 
 /// Loads a texture with the given file name.
 std::optional<Texture> loadTexture(const std::string &name, const std::string &material);
