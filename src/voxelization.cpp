@@ -270,14 +270,14 @@ void splitTriangle_onePlanarCase(const TexturedTriangle &t,
     //               Instead of producing a triangle and a quad, we only produce two triangles
     //               We only perform one intersection test with the opposing edge
     const Vec3 planarVertex = t.vertex(planarIndex);
-    const Vec2 planarTexture = t.texture(planarIndex);
+    const Vec2f planarTexture = t.texture(planarIndex);
     const Vec3 nonPlanarVertices[2]{t.vertex(nonPlanarIndices[0]), t.vertex(nonPlanarIndices[1])};
-    const Vec2 nonPlanarTextures[2]{t.texture(nonPlanarIndices[0]), t.texture(nonPlanarIndices[1])};
+    const Vec2f nonPlanarTextures[2]{t.texture(nonPlanarIndices[0]), t.texture(nonPlanarIndices[1])};
     const Vec3 nonPlanarEdge = nonPlanarVertices[1] - nonPlanarVertices[0];
 
     const real_type intersection = intersect_ray_axisPlane(nonPlanarVertices[0], nonPlanarEdge, val.axis, val.plane);
     const Vec3 geoIntersection = obj2voxel::mix(nonPlanarVertices[0], nonPlanarVertices[1], intersection);
-    const Vec2 texIntersection = obj2voxel::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
+    const Vec2f texIntersection = obj2voxel::mix(nonPlanarTextures[0], nonPlanarTextures[1], intersection);
 
     const TexturedTriangle triangles[2]{
         {{planarVertex, nonPlanarVertices[0], geoIntersection}, {planarTexture, nonPlanarTextures[0], texIntersection}},
@@ -309,10 +309,10 @@ void splitTriangle_regularCase(const TexturedTriangle &t,
     // The intersection points are always on edges adjacent to the isolated index.
     // We can obtain the exact points by linearly interpolating using our intersection points.
     const Vec3 isolatedVertex = t.vertex(isolatedIndex);
-    const Vec2 isolatedTexture = t.texture(isolatedIndex);
+    const Vec2f isolatedTexture = t.texture(isolatedIndex);
 
     const Vec3 otherVertices[2]{t.vertex(otherIndices[0]), t.vertex(otherIndices[1])};
-    const Vec2 otherTextures[2]{t.texture(otherIndices[0]), t.texture(otherIndices[1])};
+    const Vec2f otherTextures[2]{t.texture(otherIndices[0]), t.texture(otherIndices[1])};
     const Vec3 edgesToOtherVertices[2]{t.vertex(otherIndices[0]) - isolatedVertex,
                                        t.vertex(otherIndices[1]) - isolatedVertex};
 
@@ -323,8 +323,8 @@ void splitTriangle_regularCase(const TexturedTriangle &t,
 
     const Vec3 geoIsectPoints[2]{obj2voxel::mix(isolatedVertex, otherVertices[0], intersections[0]),
                                  obj2voxel::mix(isolatedVertex, otherVertices[1], intersections[1])};
-    const Vec2 texIsectPoints[2]{obj2voxel::mix(isolatedTexture, otherTextures[0], intersections[0]),
-                                 obj2voxel::mix(isolatedTexture, otherTextures[1], intersections[1])};
+    const Vec2f texIsectPoints[2]{obj2voxel::mix(isolatedTexture, otherTextures[0], intersections[0]),
+                                  obj2voxel::mix(isolatedTexture, otherTextures[1], intersections[1])};
 
     // Construct the isolated triangle from intersection points.
     const TexturedTriangle isolatedTriangle = {{isolatedVertex, geoIsectPoints[0], geoIsectPoints[1]},
@@ -433,7 +433,7 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
     WeightedUv result{};
     for (const TexturedTriangle t : *postSplitBuffer) {
         const float weight = static_cast<float>(inputTriangle.area());
-        const Vec2 uv = t.textureCenter();
+        const Vec2f uv = t.textureCenter();
 
         result = mix(result, {weight, uv});
     }
@@ -541,18 +541,21 @@ void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle)
     uvBuffer.clear();
 }
 
-AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, u32 resolution, Vec3u permutation)
+AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, u32 resolution, int unitTransform[9])
 {
     const Vec3 meshSize = max - min;
     const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
-    const real_type scaleFactor = (real_type(resolution) - ANTI_BLEED) / maxOfAllAxes;
-    const Vec3 baseTranslation = (-min * scaleFactor) + Vec3::filledWith(ANTI_BLEED / 2);
 
-    AffineTransform result;
+    // translate to positive octant [0, t]
+    AffineTransform result{1, -min};
+    // scale and translate to unit cube [-1, 1]
+    result = AffineTransform{real_type{2} / maxOfAllAxes, -Vec3::one()} * result;
+    // unit transform and offset back to [0, 2]
+    result = AffineTransform::fromUnitTransform(unitTransform, Vec3::one()) * result;
+    // range transform to voxel grid [a/2, t-a/2]
+    result = AffineTransform{(real_type(resolution) - ANTI_BLEED) / 2, Vec3::filledWith(ANTI_BLEED / 2)} * result;
+
     for (usize i = 0; i < 3; ++i) {
-        result.matrix[i] = Vec3::zero();
-        result.matrix[i][permutation[i]] = scaleFactor;
-        result.translation[i] = baseTranslation[permutation[i]];
         VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + result.matrix[i].toString());
     }
 

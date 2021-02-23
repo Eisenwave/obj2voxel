@@ -1,6 +1,7 @@
 #ifndef OBJ2VOXEL_TRIANGLE_HPP
 #define OBJ2VOXEL_TRIANGLE_HPP
 
+#include "obj2voxel.h"
 #include "util.hpp"
 
 #include "voxelio/image.hpp"
@@ -10,11 +11,13 @@ namespace obj2voxel {
 
 using namespace voxelio;
 
-using Vec2 = Vec<real_type, 2>;
 using Vec3 = Vec<real_type, 3>;
 
+using Texture = obj2voxel_texture;
+
 /// The type of a triangle in terms of material.
-enum class TriangleType {
+enum class TriangleType : obj2voxel_enum_t {
+    NONE,
     /// For triangles with no material. Such triangles are voxelized as white by default.
     MATERIALLESS,
     /// For triangles with no texture but with a solid color.
@@ -24,6 +27,8 @@ enum class TriangleType {
 };
 
 // TRIANGLES ===========================================================================================================
+
+using VisualTriangle = ::obj2voxel_triangle;
 
 /// A 3D triangle.
 struct Triangle {
@@ -106,34 +111,19 @@ struct Triangle {
     }
 };
 
-/// Wrapper class for voxelio images.
-struct Texture {
-    Image image;
-
-    /// Constructs the texture from a voxelio image.
-    Texture(Image image) : image{std::move(image)} {}
-
-    /// Returns the color at the given uv coordinates as a vector.
-    Vec3f get(Vec2 uv) const
-    {
-        // TODO move uv transformation on y-axis here instead of doing it in VisualTriangle
-        return image.getPixel(uv).vecf();
-    }
-};
-
 /// A triangle that also has UV coordinates.
 struct TexturedTriangle : public Triangle {
-    Vec2 t[3];
+    Vec2f t[3];
 
     /// Returns the texture coordinates at the index in [0,3).
-    constexpr Vec2 texture(usize index) const
+    constexpr Vec2f texture(usize index) const
     {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return t[index];
     }
 
     /// Returns the center of the UV coordinates.
-    constexpr Vec2 textureCenter() const
+    constexpr Vec2f textureCenter() const
     {
         return (t[0] + t[1] + t[2]) / 3;
     }
@@ -142,7 +132,7 @@ struct TexturedTriangle : public Triangle {
     constexpr void subdivide4(TexturedTriangle out[4]) const
     {
         Vec3 geo[3]{mix(v[0], v[1], 0.5f), mix(v[1], v[2], 0.5f), mix(v[2], v[0], 0.5f)};
-        Vec2 tex[3]{mix(t[0], t[1], 0.5f), mix(t[1], t[2], 0.5f), mix(t[2], t[0], 0.5f)};
+        Vec2f tex[3]{mix(t[0], t[1], 0.5f), mix(t[1], t[2], 0.5f), mix(t[2], t[0], 0.5f)};
 
         out[0] = {{geo[0], geo[1], geo[2]}, {tex[0], tex[1], tex[2]}};
         out[1] = {{v[0], geo[0], geo[2]}, {t[0], tex[0], tex[2]}};
@@ -151,24 +141,49 @@ struct TexturedTriangle : public Triangle {
     }
 };
 
+}  // namespace obj2voxel
+
+// API TYPES ===========================================================================================================
+
+/// Wrapper class for voxelio images.
+struct obj2voxel_texture {
+    std::optional<voxelio::Image> image;
+
+    /// Leaves the image uninitialized.
+    obj2voxel_texture() : image{std::nullopt} {}
+
+    /// Constructs the texture from a voxelio image.
+    obj2voxel_texture(voxelio::Image image) : image{std::move(image)} {}
+
+    /// Returns the color at the given uv coordinates as a vector.
+    voxelio::Vec3f get(voxelio::Vec2f uv) const
+    {
+        VXIO_DEBUG_ASSERT(image.has_value());
+        // TODO move uv transformation on y-axis here instead of doing it in VisualTriangle
+        return image->getPixel(uv).vecf();
+    }
+};
+
 /// A textured triangle that also has material information.
-struct VisualTriangle : public TexturedTriangle {
-    TriangleType type;
+struct obj2voxel_triangle : public obj2voxel::TexturedTriangle {
+    obj2voxel::TriangleType type;
     union {
-        Texture *texture;
-        Vec3f color;
+        const obj2voxel_texture *texture;
+        obj2voxel::Vec3f color;
     };
 
-    VisualTriangle() : texture{nullptr} {}
+    obj2voxel_triangle() : texture{nullptr} {}
 
-    constexpr VisualTriangle(TriangleType type) : type{type}, texture{nullptr} {}
+    constexpr obj2voxel_triangle(obj2voxel::TriangleType type) : type{type}, texture{nullptr} {}
 
-    Vec3f colorAt_f(Vec2 uv) const
+    obj2voxel::Vec3f colorAt_f(obj2voxel::Vec2f uv) const
     {
+        VXIO_DEBUG_ASSERT_NE(type, obj2voxel::TriangleType::NONE);
         switch (type) {
-        case TriangleType::MATERIALLESS: return Vec3f::filledWith(1);
-        case TriangleType::UNTEXTURED: return color;
-        case TriangleType::TEXTURED: {
+        case obj2voxel::TriangleType::NONE: return obj2voxel::Vec3f{1, 0, 1};
+        case obj2voxel::TriangleType::MATERIALLESS: return obj2voxel::Vec3f::filledWith(1);
+        case obj2voxel::TriangleType::UNTEXTURED: return color;
+        case obj2voxel::TriangleType::TEXTURED: {
             VXIO_DEBUG_ASSERT_NOTNULL(texture);
             return texture->get({uv.x(), 1 - uv.y()});
         }
@@ -177,6 +192,42 @@ struct VisualTriangle : public TexturedTriangle {
     }
 };
 
-}  // namespace obj2voxel
+inline void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, float vertices[9])
+{
+    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
+    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
+    triangle->type = obj2voxel::TriangleType::MATERIALLESS;
+    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
+    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
+    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
+}
+
+inline void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, float vertices[9], float color[3])
+{
+    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
+    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
+    triangle->type = obj2voxel::TriangleType::MATERIALLESS;
+    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
+    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
+    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
+    triangle->color = obj2voxel::Vec3f{color};
+}
+
+inline void obj2voxel_set_triangle_textured(obj2voxel_triangle *triangle,
+                                            float vertices[9],
+                                            float textures[6],
+                                            obj2voxel_texture *texture)
+{
+    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
+    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
+    triangle->type = obj2voxel::TriangleType::TEXTURED;
+    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
+    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
+    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
+    triangle->t[0] = obj2voxel::Vec2f{textures + 0};
+    triangle->t[1] = obj2voxel::Vec2f{textures + 2};
+    triangle->t[2] = obj2voxel::Vec2f{textures + 4};
+    triangle->texture = texture;
+}
 
 #endif  // OBJ2VOXEL_TRIANGLE_HPP

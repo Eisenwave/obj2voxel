@@ -54,67 +54,69 @@ void dumpDebugStl(const std::string &path)
 
 // TRIANGLE STREAMS ====================================================================================================
 
+ITriangleStream::~ITriangleStream() = default;
+
 namespace {
+
+struct CallbackTriangleStream final : public ITriangleStream {
+    obj2voxel_triangle_callback callback;
+    void *callbackData;
+
+    CallbackTriangleStream(obj2voxel_triangle_callback callback, void *callbackData = nullptr)
+        : callback{callback}, callbackData{callbackData}
+    {
+    }
+
+    bool next(VisualTriangle &out) final;
+};
+
+bool CallbackTriangleStream::next(VisualTriangle &out)
+{
+    return callback(callbackData, &out);
+}
 
 struct ObjTriangleStream final : public ITriangleStream {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     std::map<std::string, Texture> textures;
-    Texture *defaultTexture = nullptr;
+    const Texture *defaultTexture = nullptr;
 
     usize shapesIndex = 0;
     usize faceIndex = 0;
     usize indexOffset = 0;
 
-    bool hasNext() final
+    bool hasNext() const
     {
         return shapesIndex < shapes.size() && faceIndex < shapes[shapesIndex].mesh.num_face_vertices.size();
     }
 
-    VisualTriangle next() final;
-
-    usize vertexCount() const final
-    {
-        return attrib.vertices.size() / 3;
-    }
-
-    const f32 *vertexBegin() const final
-    {
-        return attrib.vertices.data();
-    }
+    bool next(VisualTriangle &out) final;
 };
 
 struct StlTriangleStream final : public ITriangleStream {
     std::vector<f32> vertices;
     usize index = 0;
 
-    bool hasNext() final
+    bool hasNext() const
     {
         return index < vertices.size();
     }
 
-    VisualTriangle next() final;
-
-    usize vertexCount() const final
-    {
-        return vertices.size() / 3;
-    }
-
-    const f32 *vertexBegin() const final
-    {
-        return vertices.data();
-    }
+    bool next(VisualTriangle &out) final;
 };
 
-VisualTriangle ObjTriangleStream::next()
+bool ObjTriangleStream::next(VisualTriangle &triangle)
 {
+    if (not hasNext()) {
+        return false;
+    }
+
     tinyobj::shape_t &shape = shapes[shapesIndex];
 
     usize vertexCount = shape.mesh.num_face_vertices[faceIndex];
     VXIO_DEBUG_ASSERT_EQ(vertexCount, 3);
 
-    VisualTriangle triangle;
     bool hasTexCoords = true;
 
     // Loop over vertices in the face.
@@ -126,7 +128,7 @@ VisualTriangle ObjTriangleStream::next()
         vertex = Vec3{attrib.vertices.data() + 3 * idx.vertex_index};
 
         if (idx.texcoord_index >= 0) {
-            triangle.t[v] = Vec2{attrib.texcoords.data() + 2 * idx.texcoord_index};
+            triangle.t[v] = Vec2f{attrib.texcoords.data() + 2 * idx.texcoord_index};
         }
         else {
             // Even if this value will never be used by untexture materials, we initialize it.
@@ -167,42 +169,42 @@ VisualTriangle ObjTriangleStream::next()
 
     indexOffset += vertexCount;
     ++faceIndex;
-    return triangle;
+
+    return hasNext();
 }
 
-VisualTriangle StlTriangleStream::next()
+bool StlTriangleStream::next(VisualTriangle &triangle)
 {
-    VisualTriangle result;
+    if (not hasNext()) {
+        return false;
+    }
 
     for (usize i = 0; i < 3; ++i) {
-        result.v[i] = Vec3f{vertices.data() + index}.cast<real_type>();
-        result.t[i] = {};
+        index += 3;
+        triangle.v[i] = Vec3f{vertices.data() + index}.cast<real_type>();
+        triangle.t[i] = {};
     }
-    index += 9;
 
-    result.type = TriangleType::MATERIALLESS;
-    return result;
+    triangle.type = TriangleType::MATERIALLESS;
+    return hasNext();
 }
 
 }  // namespace
 
+std::unique_ptr<ITriangleStream> ITriangleStream::fromCallback(obj2voxel_triangle_callback callback, void *callbackData)
+{
+    return std::unique_ptr<ITriangleStream>{new CallbackTriangleStream{callback, callbackData}};
+}
+
 // FILE LOADING ========================================================================================================
 
-std::unique_ptr<ITriangleStream> loadObj(const std::string &inFile, const std::string &textureFile)
+std::unique_ptr<ITriangleStream> ITriangleStream::fromObjFile(const std::string &inFile, const Texture *defaultTexture)
 {
     std::string warn;
     std::string err;
 
     ObjTriangleStream stream;
-
-    if (not textureFile.empty()) {
-        std::optional<Texture> loadedDefault = loadTexture(textureFile, "-t");
-        if (loadedDefault.has_value()) {
-            auto [location, success] = stream.textures.emplace("", std::move(*loadedDefault));
-            VXIO_ASSERTM(success, "Multiple default textures?!");
-            stream.defaultTexture = &location->second;
-        }
-    }
+    stream.defaultTexture = defaultTexture;
 
     bool tinyobjSuccess =
         tinyobj::LoadObj(&stream.attrib, &stream.shapes, &stream.materials, &warn, &err, inFile.c_str());
@@ -237,7 +239,7 @@ std::unique_ptr<ITriangleStream> loadObj(const std::string &inFile, const std::s
     return std::make_unique<ObjTriangleStream>(std::move(stream));
 }
 
-std::unique_ptr<ITriangleStream> loadStl(const std::string &inFile)
+std::unique_ptr<ITriangleStream> ITriangleStream::fromStlFile(const std::string &inFile)
 {
     std::optional<FileInputStream> stream = FileInputStream::open(inFile);
     if (not stream.has_value()) {
@@ -305,6 +307,8 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
 
 // OUTPUT ==============================================================================================================
 
+IVoxelSink::~IVoxelSink() = default;
+
 namespace {
 
 AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
@@ -318,10 +322,86 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
     }
 }
 
-}  // namespace
+struct CallbackVoxelSink final : public IVoxelSink {
+    obj2voxel_voxel_callback callback;
+    void *callbackData;
+    bool good = true;
+    usize voxelCount = 0;
 
-VoxelSink::VoxelSink(OutputStream &out, FileType outFormat, usize resolution)
-    : writer{makeWriter(out, outFormat)}, usePalette{requiresPalette(outFormat)}
+    CallbackVoxelSink(obj2voxel_voxel_callback callback, void *callbackData = nullptr)
+        : callback{callback}, callbackData{callbackData}
+    {
+    }
+
+    bool canWrite() const final
+    {
+        return good;
+    }
+
+    usize voxelsWritten() const final
+    {
+        return voxelCount;
+    }
+
+    void write(Voxel32 voxels[], usize size) final;
+
+    void finalize() final
+    {
+        VXIO_LOG(DEBUG, "Flushing callback sink (no-op)");
+    }
+};
+
+/**
+ * @brief A Java-style iterator/stream which can be used to stream through the triangles of a mesh regardless of
+ * internal format.
+ * This stream abstracts from all voxelio specifics such as palettes.
+ *
+ * Only formats that don't use palettes such as VL32 and XYZRGB can be streamed directly to disk.
+ * For other formats like QEF, the full palette must be built before anything can be written.
+ * This results in ALL voxels being dumped into a std::vector until flush() is called.
+ */
+struct VoxelioVoxelSink final : public IVoxelSink {
+private:
+    static constexpr usize BUFFER_SIZE = 8192;
+
+    std::unique_ptr<OutputStream> stream;
+    std::unique_ptr<AbstractListWriter> writer;
+    const bool usePalette;
+    std::vector<Voxel32> buffer;
+    ResultCode err = ResultCode::OK;
+    usize voxelCount = 0;
+    bool finalized = false;
+
+public:
+    VoxelioVoxelSink(std::unique_ptr<OutputStream> out, FileType outFormat, usize resolution);
+
+    /// Destroys the sink. This calls flush(), which can fail.
+    /// To avoid errors in the destructor, flush() should be called manually before destruction.
+    ~VoxelioVoxelSink() final
+    {
+        if (isGood(err)) {
+            finalize();
+            VXIO_ASSERT(isGood(err));
+        }
+    }
+
+    bool canWrite() const final
+    {
+        return isGood(err);
+    }
+
+    usize voxelsWritten() const final
+    {
+        return voxelCount;
+    }
+
+    void write(Voxel32 voxels[], usize size) final;
+
+    void finalize() final;
+};
+
+VoxelioVoxelSink::VoxelioVoxelSink(std::unique_ptr<OutputStream> out, FileType outFormat, usize resolution)
+    : stream{std::move(out)}, writer{makeWriter(*stream, outFormat)}, usePalette{requiresPalette(outFormat)}
 {
     writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
 
@@ -331,9 +411,11 @@ VoxelSink::VoxelSink(OutputStream &out, FileType outFormat, usize resolution)
     buffer.reserve(BUFFER_SIZE);
 }
 
-// Pulled out of cpp to allow for compiler optimizations.
-void VoxelSink::write(Voxel32 voxels[], usize size)
+void VoxelioVoxelSink::write(Voxel32 voxels[], usize size)
 {
+    VXIO_ASSERTM(not finalized, "Writing to finalized voxel sink");
+    VXIO_ASSERTM(canWrite(), "Writing to a failed voxel sink");
+
     voxelCount += size;
 
     if (usePalette) {
@@ -353,27 +435,66 @@ void VoxelSink::write(Voxel32 voxels[], usize size)
     }
 }
 
-void VoxelSink::flush()
+void VoxelioVoxelSink::finalize()
 {
+    if (finalized) {
+        return;
+    }
+    finalized = true;
+    if (not isGood(err)) {
+        VXIO_LOG(DEBUG, "Skipping voxel sink finalization because writer is failed");
+        return;
+    }
     VXIO_ASSERT_CONSEQUENCE(not usePalette, buffer.size() == 0);
     VXIO_ASSERT_CONSEQUENCE(usePalette, buffer.size() == voxelCount);
 
-    VXIO_LOG(INFO, "All voxels written! (" + stringifyLargeInt(voxelCount) + " voxels)");
-
     if (usePalette) {
-        VXIO_LOG(DEBUG, "Flushing " + stringify(buffer.size()) + " voxels ...");
+        VXIO_LOG(DEBUG, "Flushing " + stringify(buffer.size()) + " voxels to paletted writer ...");
         // not strictly necessary but allows us to keep apart init errors and write errors
-        ResultCode initResult = writer->init();
-        VXIO_ASSERTM(voxelio::isGood(initResult), voxelio::informativeNameOf(initResult));
 
-        ResultCode writeResult = writer->write(buffer.data(), buffer.size());
+        if (ResultCode initResult = writer->init(); not isGood(initResult)) {
+            err = initResult;
+            return;
+        }
+
+        if (ResultCode writeResult = writer->write(buffer.data(), buffer.size()); not isGood(writeResult)) {
+            err = writeResult;
+            return;
+        }
         buffer.clear();
-
-        VXIO_ASSERTM(voxelio::isGood(writeResult), voxelio::informativeNameOf(writeResult));
     }
 
-    // TODO implement voxelio writer flushing
-    VXIO_LOG(INFO, "Done!");
+    err = writer->finalize();
+}
+
+void CallbackVoxelSink::write(Voxel32 voxels[], usize size)
+{
+    VXIO_ASSERTM(canWrite(), "Writing to a failed voxel sink");
+
+    // This cast is not standard compliant despite all these assertions.
+    // However, because a Voxel32 is essentially a struct of four ints, reinterpreting it as four ints will be safe
+    // for virtually all compilers and architectures.
+    static_assert(sizeof(Voxel32) == sizeof(uint32_t[4]));
+    static_assert(alignof(Voxel32) == alignof(uint32_t[4]));
+    static_assert(offsetof(Voxel32, pos) == 0);
+    static_assert(offsetof(Voxel32, argb) == 12);
+
+    uint32_t *voxelData = reinterpret_cast<uint32_t *>(voxels);
+    good &= callback(callbackData, voxelData, size * 4);
+}
+
+}  // namespace
+
+std::unique_ptr<IVoxelSink> IVoxelSink::fromCallback(obj2voxel_voxel_callback callback, void *callbackData)
+{
+    return std::unique_ptr<IVoxelSink>{new CallbackVoxelSink{callback, callbackData}};
+}
+
+std::unique_ptr<IVoxelSink> IVoxelSink::fromVoxelio(std::unique_ptr<OutputStream> out,
+                                                    FileType outFormat,
+                                                    usize resolution)
+{
+    return std::unique_ptr<IVoxelSink>{new VoxelioVoxelSink{std::move(out), outFormat, resolution}};
 }
 
 }  // namespace obj2voxel

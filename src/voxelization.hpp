@@ -20,12 +20,12 @@ using namespace voxelio;
 extern void (*globalTriangleDebugCallback)(Triangle);
 
 /// An enum which describes the strategy for coloring in voxels from triangles.
-enum class ColorStrategy {
+enum class ColorStrategy : obj2voxel_enum_t {
     /// For the maximum strategy, the triangle with the greatest area is chosen as the color.
-    MAX,
+    MAX = OBJ2VOXEL_MAX_STRATEGY,
     /// For the blending strategy, the voxel color is determined by blending the triangle colors using their areas
     /// within the voxel as weights.
-    BLEND
+    BLEND = OBJ2VOXEL_BLEND_STRATEGY
 };
 
 constexpr const char *nameOf(ColorStrategy strategy)
@@ -55,7 +55,7 @@ class Voxelizer {
     static constexpr real_type ANTI_BLEED = 0.5f;
 
 public:
-    static AffineTransform computeTransform(Vec3 min, Vec3 max, unsigned resolution, Vec3u permutation);
+    static AffineTransform computeTransform(Vec3 min, Vec3 max, unsigned resolution, int unitTransform[9]);
 
 private:
     std::vector<TexturedTriangle> buffers[3]{};
