@@ -124,10 +124,10 @@ using namespace obj2voxel;
  */
 struct obj2voxel_instance {
     // configurable
-    std::map<std::string, obj2voxel_texture> textures;
     FileOrCallback<obj2voxel_triangle_callback> input;
     FileOrCallback<obj2voxel_voxel_callback> output;
     IVoxelSink *voxelSink = nullptr;
+    Texture *defaultTexture = nullptr;
     Vec3f meshMin = Vec3f::filledWith(std::numeric_limits<float>::infinity());
     Vec3f meshMax = -meshMin;
     ColorStrategy colorStrategy = ColorStrategy::MAX;
@@ -150,6 +150,8 @@ struct obj2voxel_instance {
     std::mutex workerMutex;
     std::mutex boundsMutex;
     uint32_t workerCount = 0;
+    bool workersStopped = false;
+    bool sinkWritable = true;
 };
 
 // ALGORITHM ===========================================================================================================
@@ -238,6 +240,12 @@ void voxelizeChunk(obj2voxel_instance &instance, Voxelizer &voxelizer, u32 chunk
 {
     VXIO_ASSERT(voxelizer.voxels().empty());
 
+    // it's okay that we don't use the mutex here, this is just an optional pre-emptive check
+    if (not instance.sinkWritable) {
+        VXIO_LOG(DEBUG, "Aborting chunk voxelization because sink is not writable");
+        return;
+    }
+
     const std::vector<u32> &chunk = instance.chunks.at(chunkIndex);
 
     Vec3u32 chunkMin, chunkMax;
@@ -274,11 +282,18 @@ void voxelizeChunk(obj2voxel_instance &instance, Voxelizer &voxelizer, u32 chunk
     VXIO_ASSERT_EQ(i, voxelCount);
     {
         std::lock_guard<std::mutex> lock{instance.sinkMutex};
-        instance.voxelSink->write(buffer.get(), voxelCount);
+        if (instance.sinkWritable &= instance.voxelSink->canWrite()) {
+            instance.voxelSink->write(buffer.get(), voxelCount);
+        }
     }
-    VXIO_LOG(SPAM,
-             "Voxelized chunk " + stringifyOct(chunkIndex) + " t:" + stringifyDec(chunk.size()) + " -> " +
-                 stringifyDec(voxelCount));
+    if (instance.sinkWritable) {
+        VXIO_LOG(SPAM,
+                 "Voxelized chunk " + stringifyOct(chunkIndex) + " t:" + stringifyDec(chunk.size()) + " -> " +
+                     stringifyDec(voxelCount));
+    }
+    else {
+        VXIO_LOG(ERROR, "Can't write voxels because sink has failed (IO error?)");
+    }
 
     voxelizer.voxels().clear();
 }
@@ -312,6 +327,56 @@ constexpr ColorFormat colorFormatOfChannelCount(size_t channels)
     case 4: return ColorFormat::ARGB32;
     }
     VXIO_ASSERT_UNREACHABLE();
+}
+
+LogLevel voxelioLogLevelOf(obj2voxel_enum_t level)
+{
+    switch (level) {
+    case OBJ2VOXEL_LOG_LEVEL_SILENT: return LogLevel::NONE;
+    case OBJ2VOXEL_LOG_LEVEL_ERROR: return LogLevel::ERROR;
+    case OBJ2VOXEL_LOG_LEVEL_WARNING: return LogLevel::WARNING;
+    case OBJ2VOXEL_LOG_LEVEL_INFO: return LogLevel::INFO;
+    case OBJ2VOXEL_LOG_LEVEL_DEBUG: return LogLevel::DEBUG;
+    }
+    VXIO_ASSERT_UNREACHABLE();
+}
+
+obj2voxel_enum_t obj2voxelLogLevelOf(LogLevel level)
+{
+    switch (level) {
+    case LogLevel::NONE: return OBJ2VOXEL_LOG_LEVEL_SILENT;
+    case LogLevel::ERROR: return OBJ2VOXEL_LOG_LEVEL_ERROR;
+    case LogLevel::WARNING: return OBJ2VOXEL_LOG_LEVEL_WARNING;
+    case LogLevel::INFO: return OBJ2VOXEL_LOG_LEVEL_INFO;
+    default: return OBJ2VOXEL_LOG_LEVEL_DEBUG;
+    }
+}
+
+AffineTransform computeMeshTransform(obj2voxel_instance &instance)
+{
+    constexpr float ANTI_BLEED = 0.5f;
+
+    const Vec3 meshSize = instance.meshMax - instance.meshMin;
+    const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
+    const real_type sampleScale = real_type(instance.sampleResolution) - ANTI_BLEED;
+
+    VXIO_DEBUG_ASSERT_NE(instance.sampleResolution, 0);
+
+    // translate to positive octant [0, t]
+    AffineTransform result{1, -instance.meshMin};
+    // scale and translate to unit cube [-1, 1]
+    result = AffineTransform{real_type{2} / maxOfAllAxes, -Vec3::one()} * result;
+    // unit transform and offset back to [0, 2]
+    result = AffineTransform::fromUnitTransform(instance.unitTransform, Vec3::one()) * result;
+    // range transform to voxel grid [a/2, t-a/2]
+    result = AffineTransform{sampleScale / 2, Vec3::filledWith(ANTI_BLEED / 2)} * result;
+
+    for (usize i = 0; i < 3; ++i) {
+        VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + result.matrix[i].toString());
+    }
+
+    VXIO_LOG(DEBUG, "Mesh translation = " + result.translation.toString());
+    return result;
 }
 
 // VOXELIZATION MAIN FUNCTIONALITY =====================================================================================
@@ -378,7 +443,7 @@ struct VoxelizationHelper<false> {
 };
 
 template <bool PARALLEL>
-void voxelize_specialized(obj2voxel_instance &instance)
+[[nodiscard]] obj2voxel_error_t voxelize_specialized(obj2voxel_instance &instance)
 {
     VoxelizationHelper<PARALLEL> helper{instance};
 
@@ -390,8 +455,7 @@ void voxelize_specialized(obj2voxel_instance &instance)
     }
     helper.waitForCompletion();
 
-    instance.meshTransform = Voxelizer::computeTransform(
-        instance.meshMin, instance.meshMax, instance.sampleResolution, instance.unitTransform);
+    instance.meshTransform = computeMeshTransform(instance);
 
     for (u32 i = 0; i < triangleCount; i += BATCH_SIZE) {
         helper.transformTriangles(i);
@@ -418,15 +482,21 @@ void voxelize_specialized(obj2voxel_instance &instance)
 
     helper.waitForCompletion();
 
+    if (not instance.voxelSink->canWrite()) {
+        VXIO_LOG(ERROR, "Voxelization failed because of IO error");
+        return OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE;
+    }
+
     VXIO_LOG(INFO, "Voxelized " + stringifyLargeInt(triangleCount) + " triangles, writing any buffered voxels ...");
 
     instance.voxelSink->finalize();
 
     VXIO_LOG(INFO, "All " + stringifyLargeInt(instance.voxelSink->voxelsWritten()) + " voxels written");
     VXIO_LOG(INFO, "Done!");
+    return OBJ2VOXEL_ERR_OK;
 }
 
-void voxelize(obj2voxel_instance &instance, ITriangleStream &stream, IVoxelSink &sink)
+[[nodiscard]] obj2voxel_error_t voxelize(obj2voxel_instance &instance, ITriangleStream &stream, IVoxelSink &sink)
 {
     u32 chunkCountCbrt = divCeil(instance.sampleResolution, CHUNK_SIZE);
     instance.chunkCount = chunkCountCbrt * chunkCountCbrt * chunkCountCbrt;
@@ -443,7 +513,7 @@ void voxelize(obj2voxel_instance &instance, ITriangleStream &stream, IVoxelSink 
     if (instance.triangles.empty()) {
         VXIO_LOG(WARNING, "Model has no triangles, aborting and writing empty voxel model");
         sink.finalize();
-        return;
+        return sink.canWrite() ? OBJ2VOXEL_ERR_OK : OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE;
     }
     VXIO_LOG(INFO, "Cached model with " + stringifyLargeInt(instance.triangles.size()) + " triangles");
 
@@ -462,10 +532,7 @@ std::unique_ptr<ITriangleStream> openInput(obj2voxel_instance &instance)
 
     switch (input.file.type) {
     case FileType::WAVEFRONT_OBJ: {
-        auto defaultPos = instance.textures.find("");
-        Texture *defaultTexture = defaultPos != instance.textures.end() ? &defaultPos->second : nullptr;
-
-        return ITriangleStream::fromObjFile(input.file.path, defaultTexture);
+        return ITriangleStream::fromObjFile(input.file.path, instance.defaultTexture);
     }
     case FileType::STEREOLITHOGRAPHY: return ITriangleStream::fromStlFile(input.file.path);
     default: return nullptr;
@@ -511,32 +578,7 @@ obj2voxel_error_t voxelize(obj2voxel_instance &instance)
         return OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE;
     }
 
-    voxelize(instance, *input, *output);
-
-    return OBJ2VOXEL_ERR_OK;
-}
-
-LogLevel voxelioLogLevelOf(obj2voxel_enum_t level)
-{
-    switch (level) {
-    case OBJ2VOXEL_LOG_LEVEL_SILENT: return LogLevel::NONE;
-    case OBJ2VOXEL_LOG_LEVEL_ERROR: return LogLevel::ERROR;
-    case OBJ2VOXEL_LOG_LEVEL_WARNING: return LogLevel::WARNING;
-    case OBJ2VOXEL_LOG_LEVEL_INFO: return LogLevel::INFO;
-    case OBJ2VOXEL_LOG_LEVEL_DEBUG: return LogLevel::DEBUG;
-    }
-    VXIO_ASSERT_UNREACHABLE();
-}
-
-obj2voxel_enum_t obj2voxelLogLevelOf(LogLevel level)
-{
-    switch (level) {
-    case LogLevel::NONE: return OBJ2VOXEL_LOG_LEVEL_SILENT;
-    case LogLevel::ERROR: return OBJ2VOXEL_LOG_LEVEL_ERROR;
-    case LogLevel::WARNING: return OBJ2VOXEL_LOG_LEVEL_WARNING;
-    case LogLevel::INFO: return OBJ2VOXEL_LOG_LEVEL_INFO;
-    default: return OBJ2VOXEL_LOG_LEVEL_DEBUG;
-    }
+    return voxelize(instance, *input, *output);
 }
 
 static obj2voxel_log_callback logCallback = nullptr;
@@ -560,7 +602,7 @@ void obj2voxel_free(obj2voxel_instance *instance)
 
 void obj2voxel_set_log_level(obj2voxel_enum_t level)
 {
-    setLogLevel(voxelioLogLevelOf(level));
+    voxelio::setLogLevel(voxelioLogLevelOf(level));
 }
 
 void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data)
@@ -602,12 +644,11 @@ void obj2voxel_set_color_strategy(obj2voxel_instance *instance, obj2voxel_enum_t
     instance->colorStrategy = strategy == OBJ2VOXEL_MAX_STRATEGY ? ColorStrategy::MAX : ColorStrategy::BLEND;
 }
 
-void obj2voxel_move_texture(obj2voxel_instance *instance, const char *name, obj2voxel_texture *texture)
+void obj2voxel_set_texture(obj2voxel_instance *instance, obj2voxel_texture *texture)
 {
     VXIO_ASSERT_NOTNULL(instance);
-    VXIO_ASSERT_NOTNULL(name);
     VXIO_ASSERT_NOTNULL(texture);
-    instance->textures.emplace(name, std::move(*texture));
+    instance->defaultTexture = texture;
 }
 
 void obj2voxel_set_input_file(obj2voxel_instance *instance, const char *file, const char *type)
@@ -773,6 +814,9 @@ void obj2voxel_run_worker(obj2voxel_instance *instance)
 
     {
         std::lock_guard<std::mutex> lock{instance->workerMutex};
+        if (instance->workersStopped) {
+            return;
+        }
         ++instance->workerCount;
     }
 
@@ -797,6 +841,7 @@ void obj2voxel_stop_workers(obj2voxel_instance *instance)
 {
     VXIO_ASSERT_NOTNULL(instance);
     std::lock_guard<std::mutex> lock{instance->workerMutex};
+    instance->workersStopped = true;
 
     for (; instance->workerCount != 0; --instance->workerCount) {
         instance->queue.issue({CommandType::EXIT, 0});
