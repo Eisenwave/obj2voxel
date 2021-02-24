@@ -124,7 +124,13 @@ int mainImpl(std::string inFile,
     obj2voxel_texture *texture = nullptr;
     if (not textureFile.empty()) {
         texture = obj2voxel_texture_alloc();
-        obj2voxel_texture_load_from_file(texture, textureFile.c_str(), nullptr);
+        bool loadSuccess = obj2voxel_texture_load_from_file(texture, textureFile.c_str(), nullptr);
+        if (loadSuccess) {
+            obj2voxel_set_texture(instance, texture);
+        }
+        else {
+            VXIO_LOG(WARNING, "Continuing without fallback texture because it could not be loaded");
+        }
     }
 
     int unitTransform[9]{};
