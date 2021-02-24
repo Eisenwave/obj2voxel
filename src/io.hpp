@@ -48,7 +48,9 @@ struct ITriangleStream {
     /// virtual destructor
     virtual ~ITriangleStream();
 
-    /// Returns the next triangle.
+    /// Assigns the next triangle.
+    /// Returns true if another triangle could be obtained from the stream, else false.
+    /// If false gets returned, this signals the end of the stream and no more triangles should be read.
     virtual bool next(VisualTriangle &out) = 0;
 };
 
