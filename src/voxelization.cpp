@@ -541,28 +541,6 @@ void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle)
     uvBuffer.clear();
 }
 
-AffineTransform Voxelizer::computeTransform(Vec3 min, Vec3 max, u32 resolution, int unitTransform[9])
-{
-    const Vec3 meshSize = max - min;
-    const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
-
-    // translate to positive octant [0, t]
-    AffineTransform result{1, -min};
-    // scale and translate to unit cube [-1, 1]
-    result = AffineTransform{real_type{2} / maxOfAllAxes, -Vec3::one()} * result;
-    // unit transform and offset back to [0, 2]
-    result = AffineTransform::fromUnitTransform(unitTransform, Vec3::one()) * result;
-    // range transform to voxel grid [a/2, t-a/2]
-    result = AffineTransform{(real_type(resolution) - ANTI_BLEED) / 2, Vec3::filledWith(ANTI_BLEED / 2)} * result;
-
-    for (usize i = 0; i < 3; ++i) {
-        VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + result.matrix[i].toString());
-    }
-
-    VXIO_LOG(DEBUG, "Mesh translation = " + result.translation.toString());
-    return result;
-}
-
 void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source)
 {
     for (auto &[index, color] : source) {
