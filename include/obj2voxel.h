@@ -59,6 +59,7 @@ OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_INPUT = 1;
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_OUTPUT = 2;
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE = 3;
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE = 4;
+OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 5;
 
 // INSTANCE ============================================================================================================
 
@@ -122,13 +123,15 @@ void obj2voxel_set_supersampling(obj2voxel_instance *instance, uint32_t level);
 void obj2voxel_set_color_strategy(obj2voxel_instance *instance, obj2voxel_enum_t strategy);
 
 /**
- * @brief Adds a named texture to the instance.
- * This follows move semantics and the original texture is no longer usable, but must still be freed.
+ * @brief Adds a fallback texture to the instance.
+ * The fallback texture is used for voxelizing input files when a triangle has UV coordinates but no material.
+ *
+ * The instance does not take ownership of the texture, so it must be kept alive during voxelization and freed
+ * afterwards.
  * @param instance the instance
- * @param name the texture name or "" for the fallback texture
  * @param texture the texture
  */
-void obj2voxel_move_texture(obj2voxel_instance *instance, const char* name, obj2voxel_texture *texture);
+void obj2voxel_set_texture(obj2voxel_instance *instance, obj2voxel_texture *texture);
 
 /**
  * @brief Sets the input to a file path with an optional type.
@@ -244,7 +247,7 @@ void obj2voxel_texture_free(obj2voxel_texture *texture);
  * @brief Loads a texture from an image file.
  * @param texture the texture
  * @param file the image file
- * @param type the type as an extension without a dot or null for auto-detection
+ * @param type the type as an extension without a dot, or null for auto-detection
  * @return true if the texture could be loaded
  */
 bool obj2voxel_texture_load_from_file(obj2voxel_texture *texture, const char *file, const char *type);
@@ -254,7 +257,7 @@ bool obj2voxel_texture_load_from_file(obj2voxel_texture *texture, const char *fi
  * @param texture the texture
  * @param data the image bytes
  * @param size the size of the byte data
- * @param type the type as an extension without a dot or null for auto-detection
+ * @param type the type as an extension without a dot, or null for auto-detection
  * @return true if the texture could be loaded
  */
 bool obj2voxel_texture_load_from_memory(obj2voxel_texture *texture,
