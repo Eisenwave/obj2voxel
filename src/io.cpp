@@ -170,7 +170,7 @@ bool ObjTriangleStream::next(VisualTriangle &triangle)
     indexOffset += vertexCount;
     ++faceIndex;
 
-    return hasNext();
+    return true;
 }
 
 bool StlTriangleStream::next(VisualTriangle &triangle)
@@ -186,7 +186,7 @@ bool StlTriangleStream::next(VisualTriangle &triangle)
     }
 
     triangle.type = TriangleType::MATERIALLESS;
-    return hasNext();
+    return true;
 }
 
 }  // namespace
@@ -234,7 +234,7 @@ std::unique_ptr<ITriangleStream> ITriangleStream::fromObjFile(const std::string 
             stream.textures.emplace(std::move(name), std::move(*tex));
         }
     }
-    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(stream.textures.size()) + " textures");
+    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(stream.textures.size()) + " material textures");
 
     return std::make_unique<ObjTriangleStream>(std::move(stream));
 }
