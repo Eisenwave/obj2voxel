@@ -127,6 +127,7 @@ int mainImpl(std::string inFile,
         bool loadSuccess = obj2voxel_texture_load_from_file(texture, textureFile.c_str(), nullptr);
         if (loadSuccess) {
             obj2voxel_set_texture(instance, texture);
+            VXIO_LOG(INFO, "Loaded fallback texture \"" + textureFile + '"');
         }
         else {
             VXIO_LOG(WARNING, "Continuing without fallback texture because it could not be loaded");
