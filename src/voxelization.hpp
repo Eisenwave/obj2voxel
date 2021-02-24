@@ -52,11 +52,6 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 ///
 /// Before the Voxelizer can be used, a transform from model space must be initialized with initTransform(...);
 class Voxelizer {
-    static constexpr real_type ANTI_BLEED = 0.5f;
-
-public:
-    static AffineTransform computeTransform(Vec3 min, Vec3 max, unsigned resolution, int unitTransform[9]);
-
 private:
     std::vector<TexturedTriangle> buffers[3]{};
     VoxelMap<WeightedUv> uvBuffer;
