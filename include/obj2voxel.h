@@ -1,9 +1,9 @@
 #ifndef OBJ2VOXEL_HEADER
 #define OBJ2VOXEL_HEADER
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,13 +29,13 @@ typedef struct obj2voxel_triangle obj2voxel_triangle;
 
 /// A callback which iterates over a sequence of triangles.
 /// Returns true if loading a triangle succeeded.
-typedef bool(*obj2voxel_triangle_callback)(void *callback_data, obj2voxel_triangle *out_triangle);
+typedef bool (*obj2voxel_triangle_callback)(void *callback_data, obj2voxel_triangle *out_triangle);
 /// A callback which writes voxels to an output.
 /// Returns true if writing voxels succeeded.
-typedef bool(*obj2voxel_voxel_callback)(void *callback_data, uint32_t *voxel_data, size_t voxel_count);
+typedef bool (*obj2voxel_voxel_callback)(void *callback_data, uint32_t *voxel_data, size_t voxel_count);
 /// A callback which handles log messages.
 /// Returns true if the message was handled or false if it should be default-logged.
-typedef bool(*obj2voxel_log_callback)(void* callback_data, const char* msg, obj2voxel_enum_t level);
+typedef bool (*obj2voxel_log_callback)(void *callback_data, const char *msg, obj2voxel_enum_t level);
 
 // ENUMS ===============================================================================================================
 
@@ -94,7 +94,7 @@ void obj2voxel_set_log_level(obj2voxel_enum_t level);
  * @param callback the callback or nullptr if the behavior should be reset to printing to stdout
  * @param callback_data the data passed to the callback each invocation
  */
-void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void* callback_data);
+void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data);
 
 // SETTINGS ============================================================================================================
 
@@ -151,7 +151,9 @@ void obj2voxel_set_input_file(obj2voxel_instance *instance, const char *file, co
  * @param callback the callback
  * @param callback_data data passed to the callback each invocation
  */
-void obj2voxel_set_input_callback(obj2voxel_instance *instance, obj2voxel_triangle_callback callback, void *callback_data);
+void obj2voxel_set_input_callback(obj2voxel_instance *instance,
+                                  obj2voxel_triangle_callback callback,
+                                  void *callback_data);
 
 /**
  * @brief Sets the output to a file path with an optional type.
@@ -170,7 +172,9 @@ void obj2voxel_set_output_file(obj2voxel_instance *instance, const char *file, c
  * @param callback the callback
  * @param callback_data data passed to the callback each invocation
  */
-void obj2voxel_set_output_callback(obj2voxel_instance *instance, obj2voxel_voxel_callback callback, void *callback_data);
+void obj2voxel_set_output_callback(obj2voxel_instance *instance,
+                                   obj2voxel_voxel_callback callback,
+                                   void *callback_data);
 
 /**
  * @brief Toggles parallelism.
@@ -180,7 +184,7 @@ void obj2voxel_set_output_callback(obj2voxel_instance *instance, obj2voxel_voxel
  * @param instance the instance
  * @param enabled true if parallelism should be enabled
  */
-void obj2voxel_set_parallel(obj2voxel_instance* instance, bool enabled);
+void obj2voxel_set_parallel(obj2voxel_instance *instance, bool enabled);
 
 /**
  * @brief Sets a unit cube transformation for the model.
@@ -189,7 +193,7 @@ void obj2voxel_set_parallel(obj2voxel_instance* instance, bool enabled);
  * @param instance the instance
  * @param transform the transformation matrix
  */
-void obj2voxel_set_unit_transform(obj2voxel_instance* instance, int transform[9]);
+void obj2voxel_set_unit_transform(obj2voxel_instance *instance, int transform[9]);
 
 /**
  * @brief Sets the mesh boundaries manually.
@@ -198,7 +202,7 @@ void obj2voxel_set_unit_transform(obj2voxel_instance* instance, int transform[9]
  * @param instance the instance
  * @param bounds the mesh boundaries: min_x, min_y, min_z, max_x, max_y, max_z
  */
-void obj2voxel_set_mesh_boundaries(obj2voxel_instance* instance, float bounds[6]);
+void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, float bounds[6]);
 
 // TRIANGLES ===========================================================================================================
 
@@ -207,7 +211,7 @@ void obj2voxel_set_mesh_boundaries(obj2voxel_instance* instance, float bounds[6]
  * @param triangle the triangle
  * @param vertices the x, y, z, coordinates of each vertex
  */
-void obj2voxel_set_triangle_basic(obj2voxel_triangle* triangle, float vertices[9]);
+void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, float vertices[9]);
 
 /**
  * @brief Sets a triangle to be a single-colored triangle with three vertices and an rgb color.
@@ -215,7 +219,7 @@ void obj2voxel_set_triangle_basic(obj2voxel_triangle* triangle, float vertices[9
  * @param vertices the x, y, z, coordinates of each vertex
  * @param color the r, g, b color
  */
-void obj2voxel_set_triangle_colored(obj2voxel_triangle* triangle, float vertices[9], float color[3]);
+void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, float vertices[9], float color[3]);
 
 /**
  * @brief Sets a triangle to be a textured triangle with three vertices, three UV coordinates and a texture pointer.
@@ -224,7 +228,7 @@ void obj2voxel_set_triangle_colored(obj2voxel_triangle* triangle, float vertices
  * @param textures the u, v, coordinates of each vertex
  * @param texture the texture pointer (not null)
  */
-void obj2voxel_set_triangle_textured(obj2voxel_triangle* triangle,
+void obj2voxel_set_triangle_textured(obj2voxel_triangle *triangle,
                                      float vertices[9],
                                      float textures[6],
                                      obj2voxel_texture *texture);
@@ -235,7 +239,7 @@ void obj2voxel_set_triangle_textured(obj2voxel_triangle* triangle,
  * @brief Allocates a new texture.
  * @return the allocated texture
  */
-obj2voxel_texture* obj2voxel_texture_alloc(void);
+obj2voxel_texture *obj2voxel_texture_alloc(void);
 
 /**
  * @brief Frees a texture.
@@ -276,9 +280,8 @@ bool obj2voxel_texture_load_from_memory(obj2voxel_texture *texture,
  * @param channels the number of channels
  * @return true if the texture could be loaded
  */
-bool obj2voxel_texture_load_pixels(obj2voxel_texture *texture,
-                                   const obj2voxel_byte_t *pixels,
-                                   size_t width, size_t height, size_t channels);
+bool obj2voxel_texture_load_pixels(
+    obj2voxel_texture *texture, const obj2voxel_byte_t *pixels, size_t width, size_t height, size_t channels);
 
 /**
  * @brief Sets the UV mode of the texture.
@@ -299,7 +302,6 @@ void obj2voxel_texture_get_meta(obj2voxel_texture *texture,
                                 size_t *out_width,
                                 size_t *out_height,
                                 size_t *out_channels);
-
 
 /**
  * @brief Copies the pixels of the texture into an output buffer.
