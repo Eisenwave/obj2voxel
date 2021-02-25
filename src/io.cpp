@@ -17,6 +17,9 @@
 
 #include <algorithm>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "3rd_party/tinyobj.hpp"
+
 namespace obj2voxel {
 
 // INPUT ===============================================================================================================
