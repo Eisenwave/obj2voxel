@@ -17,6 +17,7 @@ void pushLogLevel(obj2voxel_enum_t) {}
 void popLogLevel() {}
 #else
 
+// evil use of static in header is ok because header is only included once
 static std::vector<obj2voxel_enum_t> logLevelStack;
 
 void pushLogLevel(obj2voxel_enum_t level)
