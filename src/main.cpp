@@ -1,12 +1,13 @@
-#include "io.hpp"
-#include "voxelization.hpp"
+#include "obj2voxel.h"
 
 #include "3rd_party/args.hpp"
 
 #include "voxelio/filetype.hpp"
+#include "voxelio/log.hpp"
 #include "voxelio/parse.hpp"
 #include "voxelio/stream.hpp"
 #include "voxelio/stringmanip.hpp"
+#include "voxelio/vec.hpp"
 
 #include <iostream>
 #include <memory>
@@ -19,10 +20,6 @@
 // comment out when building
 //#define OBJ2VOXEL_DUMP_STL
 //#define OBJ2VOXEL_MANUAL_TEST
-
-// tinobj implementation must be included last because it is alos included by voxelization.hpp (but no implementation)
-#define TINYOBJLOADER_IMPLEMENTATION 1
-#include "3rd_party/tinyobj.hpp"
 
 // this macro helps us run the executable with hardcoded parameters without IDE help
 #ifdef OBJ2VOXEL_TEST
@@ -45,8 +42,13 @@ namespace {
 using namespace voxelio;
 
 constexpr bool DEFAULT_SUPERSAMPLE = false;
-constexpr ColorStrategy DEFAULT_COLOR_STRATEGY = ColorStrategy::MAX;
+constexpr obj2voxel_enum_t DEFAULT_COLOR_STRATEGY = OBJ2VOXEL_MAX_STRATEGY;
 constexpr Vec3u DEFAULT_PERMUTATION = {0, 1, 2};
+
+constexpr const char *nameOfColorStrategy(obj2voxel_enum_t strategy)
+{
+    return strategy == OBJ2VOXEL_BLEND_STRATEGY ? "blend" : "max";
+}
 
 int mainImpl(std::string inFile,
              std::string outFile,
@@ -54,12 +56,12 @@ int mainImpl(std::string inFile,
              unsigned threads = 0,
              std::string textureFile = "",
              bool supersample = DEFAULT_SUPERSAMPLE,
-             ColorStrategy colorStrategy = DEFAULT_COLOR_STRATEGY,
+             obj2voxel_enum_t colorStrategy = DEFAULT_COLOR_STRATEGY,
              Vec3u permutation = DEFAULT_PERMUTATION)
 {
     VXIO_LOG(INFO,
              "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringifyLargeInt(resolution) +
-                 " with strategy " + std::string(nameOf(colorStrategy)));
+                 " with strategy " + std::string(nameOfColorStrategy(colorStrategy)));
 
     if (inFile.empty()) {
         VXIO_LOG(ERROR, "Input file path must not be empty");
@@ -232,8 +234,8 @@ int main()
 #ifdef OBJ2VOXEL_MANUAL_TEST
     return mainImpl("//home/user/assets/mesh/sword/sword.obj", "/home/user/assets/mesh/sword/sword_128.vl32", 128);
 #else
-    const std::unordered_map<std::string, ColorStrategy> strategyMap{{"max", ColorStrategy::MAX},
-                                                                     {"blend", ColorStrategy::BLEND}};
+    const std::unordered_map<std::string, obj2voxel_enum_t> strategyMap{{"max", OBJ2VOXEL_MAX_STRATEGY},
+                                                                        {"blend", OBJ2VOXEL_BLEND_STRATEGY}};
     const unsigned threadCount = std::thread::hardware_concurrency();
 
     args::ArgumentParser parser(HEADER, FOOTER);
@@ -248,7 +250,7 @@ int main()
 
     auto vgroup = args::Group(parser, "Voxelization Options:");
     auto resolutionArg = args::ValueFlag<unsigned>(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
-    auto strategyArg = args::MapFlag<std::string, ColorStrategy>(
+    auto strategyArg = args::MapFlag<std::string, obj2voxel_enum_t>(
         vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, DEFAULT_COLOR_STRATEGY);
     auto permutationArg = args::ValueFlag<std::string>(vgroup, "permutation", PERMUTATION_ARG, {'p'}, "xyz");
     auto ssArg = args::Flag(vgroup, "supersample", SS_DESCR, {'u'});
