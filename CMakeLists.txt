@@ -20,8 +20,13 @@ else()
     add_definitions(-DVXIO_RELEASE)
 endif()
 
-add_executable(obj2voxel
-    src/main.cpp
+add_subdirectory(voxelio)
+
+#####################
+# OBJ2VOXEL LIBRARY #
+#####################
+
+add_library(obj2voxel STATIC
     src/3rd_party/tinyobj.hpp
     src/3rd_party/args.hpp
     src/threading.hpp
@@ -33,9 +38,32 @@ add_executable(obj2voxel
     src/io.hpp
     src/obj2voxel.cpp
     include/obj2voxel.h)
-
-add_subdirectory(voxelio)
-target_link_libraries(obj2voxel voxelio ${CMAKE_THREAD_LIBS_INIT})
+    
+target_link_libraries(obj2voxel PUBLIC voxelio ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(obj2voxel PUBLIC voxelio/include)
 target_include_directories(obj2voxel PUBLIC include)
+
+#################
+# OBJ2VOXEL CLI #
+#################
+
+add_executable(obj2voxel-cli src/main.cpp)
+set_target_properties(obj2voxel-cli PROPERTIES OUTPUT_NAME "obj2voxel")
+
+target_link_libraries(obj2voxel-cli PRIVATE obj2voxel ${CMAKE_THREAD_LIBS_INIT})
+
+target_include_directories(obj2voxel-cli PUBLIC voxelio/include)
+target_include_directories(obj2voxel-cli PUBLIC include)
+
+###################
+# OBJ2VOXEL TESTS #
+###################
+
+add_subdirectory(test)
+
+
+
+
+
+
