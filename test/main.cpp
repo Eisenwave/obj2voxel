@@ -5,9 +5,9 @@
 
 #include <vector>
 
-// TESTS ===============================================================================================================
+namespace {
 
-#define TEST_HEADER
+// TESTS ===============================================================================================================
 
 using TestFunction = void (*)(void);
 
@@ -73,6 +73,8 @@ struct NamedTest {
     const char *name;
     TestFunction test;
 };
+
+}  // namespace
 
 int main()
 {
