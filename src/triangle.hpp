@@ -192,42 +192,4 @@ struct obj2voxel_triangle : public obj2voxel::TexturedTriangle {
     }
 };
 
-inline void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, float vertices[9])
-{
-    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
-    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
-    triangle->type = obj2voxel::TriangleType::MATERIALLESS;
-    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
-    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
-    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
-}
-
-inline void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, float vertices[9], float color[3])
-{
-    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
-    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
-    triangle->type = obj2voxel::TriangleType::MATERIALLESS;
-    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
-    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
-    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
-    triangle->color = obj2voxel::Vec3f{color};
-}
-
-inline void obj2voxel_set_triangle_textured(obj2voxel_triangle *triangle,
-                                            float vertices[9],
-                                            float textures[6],
-                                            obj2voxel_texture *texture)
-{
-    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
-    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
-    triangle->type = obj2voxel::TriangleType::TEXTURED;
-    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
-    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
-    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
-    triangle->t[0] = obj2voxel::Vec2f{textures + 0};
-    triangle->t[1] = obj2voxel::Vec2f{textures + 2};
-    triangle->t[2] = obj2voxel::Vec2f{textures + 4};
-    triangle->texture = texture;
-}
-
 #endif  // OBJ2VOXEL_TRIANGLE_HPP

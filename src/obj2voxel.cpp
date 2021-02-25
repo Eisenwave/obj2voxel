@@ -562,10 +562,16 @@ std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
 obj2voxel_error_t voxelize(obj2voxel_instance &instance)
 {
     if (not instance.input.isPresent()) {
+        VXIO_LOG(ERROR, "No input was specified");
         return OBJ2VOXEL_ERR_NO_INPUT;
     }
     if (not instance.output.isPresent()) {
+        VXIO_LOG(ERROR, "No output was specified");
         return OBJ2VOXEL_ERR_NO_OUTPUT;
+    }
+    if (instance.outputResolution == 0) {
+        VXIO_LOG(ERROR, "No resolution was specified");
+        return OBJ2VOXEL_ERR_NO_RESOLUTION;
     }
 
     std::unique_ptr<ITriangleStream> input = openInput(instance);
@@ -603,6 +609,11 @@ void obj2voxel_free(obj2voxel_instance *instance)
 void obj2voxel_set_log_level(obj2voxel_enum_t level)
 {
     voxelio::setLogLevel(voxelioLogLevelOf(level));
+}
+
+obj2voxel_enum_t obj2voxel_get_log_level()
+{
+    return obj2voxelLogLevelOf(voxelio::getLogLevel());
 }
 
 void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data)
@@ -691,19 +702,57 @@ void obj2voxel_set_parallel(obj2voxel_instance *instance, bool enabled)
     instance->parallel = enabled;
 }
 
-void obj2voxel_set_unit_transform(obj2voxel_instance *instance, int transform[9])
+void obj2voxel_set_unit_transform(obj2voxel_instance *instance, const int transform[9])
 {
     VXIO_ASSERT_NOTNULL(instance);
     VXIO_ASSERT_NOTNULL(transform);
     std::memcpy(instance->unitTransform, transform, sizeof(instance->unitTransform));
 }
 
-void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, float bounds[6])
+void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, const float bounds[6])
 {
     VXIO_ASSERT_NOTNULL(instance);
     VXIO_ASSERT_NOTNULL(bounds);
     instance->meshMin = Vec3f{bounds};
     instance->meshMax = Vec3f{bounds + 3};
+}
+
+void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, const float vertices[9])
+{
+    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
+    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
+    triangle->type = obj2voxel::TriangleType::MATERIALLESS;
+    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
+    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
+    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
+}
+
+void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, const float vertices[9], const float color[3])
+{
+    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
+    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
+    triangle->type = obj2voxel::TriangleType::MATERIALLESS;
+    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
+    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
+    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
+    triangle->color = obj2voxel::Vec3f{color};
+}
+
+void obj2voxel_set_triangle_textured(obj2voxel_triangle *triangle,
+                                     const float vertices[9],
+                                     const float textures[6],
+                                     obj2voxel_texture *texture)
+{
+    VXIO_DEBUG_ASSERT_NOTNULL(triangle);
+    VXIO_DEBUG_ASSERT_NOTNULL(vertices);
+    triangle->type = obj2voxel::TriangleType::TEXTURED;
+    triangle->v[0] = obj2voxel::Vec3{vertices + 0};
+    triangle->v[1] = obj2voxel::Vec3{vertices + 3};
+    triangle->v[2] = obj2voxel::Vec3{vertices + 6};
+    triangle->t[0] = obj2voxel::Vec2f{textures + 0};
+    triangle->t[1] = obj2voxel::Vec2f{textures + 2};
+    triangle->t[2] = obj2voxel::Vec2f{textures + 4};
+    triangle->texture = texture;
 }
 
 obj2voxel_texture *obj2voxel_texture_alloc(void)
