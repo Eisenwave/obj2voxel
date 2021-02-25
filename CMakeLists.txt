@@ -39,9 +39,9 @@ add_library(obj2voxel STATIC
     src/obj2voxel.cpp
     include/obj2voxel.h)
     
-target_link_libraries(obj2voxel PUBLIC voxelio ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(obj2voxel PRIVATE voxelio PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
-target_include_directories(obj2voxel PUBLIC voxelio/include)
+target_include_directories(obj2voxel PRIVATE voxelio/include)
 target_include_directories(obj2voxel PUBLIC include)
 
 #################
@@ -51,10 +51,10 @@ target_include_directories(obj2voxel PUBLIC include)
 add_executable(obj2voxel-cli src/main.cpp)
 set_target_properties(obj2voxel-cli PROPERTIES OUTPUT_NAME "obj2voxel")
 
-target_link_libraries(obj2voxel-cli PRIVATE obj2voxel ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(obj2voxel-cli PRIVATE obj2voxel PRIVATE voxelio ${CMAKE_THREAD_LIBS_INIT})
 
-target_include_directories(obj2voxel-cli PUBLIC voxelio/include)
-target_include_directories(obj2voxel-cli PUBLIC include)
+target_include_directories(obj2voxel-cli PRIVATE voxelio/include)
+target_include_directories(obj2voxel-cli PRIVATE include)
 
 ###################
 # OBJ2VOXEL TESTS #

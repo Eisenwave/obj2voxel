@@ -6,4 +6,4 @@ add_executable(obj2voxel-test main.cpp testutil.hpp)
 target_include_directories(obj2voxel-test PUBLIC "${INCLUDE_DIR}")
 target_include_directories(obj2voxel-test PUBLIC "${VXIO_INCLUDE_DIR}")
 
-target_link_libraries(obj2voxel-test PUBLIC obj2voxel)
+target_link_libraries(obj2voxel-test PRIVATE obj2voxel PRIVATE voxelio)
