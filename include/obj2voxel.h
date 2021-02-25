@@ -57,9 +57,10 @@ OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_DEBUG = 4;
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_OK = 0;
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_INPUT = 1;
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_OUTPUT = 2;
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE = 3;
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE = 4;
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 5;
+OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_RESOLUTION = 3;
+OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE = 4;
+OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE = 5;
+OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 6;
 
 // INSTANCE ============================================================================================================
 
@@ -86,6 +87,12 @@ void obj2voxel_free(obj2voxel_instance *instance);
  * @param level the log level
  */
 void obj2voxel_set_log_level(obj2voxel_enum_t level);
+
+/**
+ * @brief Returns the current log level.
+ * @return the current log level
+ */
+obj2voxel_enum_t obj2voxel_get_log_level(void);
 
 /**
  * @brief Sets a custom callback for log messages.
@@ -193,7 +200,7 @@ void obj2voxel_set_parallel(obj2voxel_instance *instance, bool enabled);
  * @param instance the instance
  * @param transform the transformation matrix
  */
-void obj2voxel_set_unit_transform(obj2voxel_instance *instance, int transform[9]);
+void obj2voxel_set_unit_transform(obj2voxel_instance *instance, const int transform[9]);
 
 /**
  * @brief Sets the mesh boundaries manually.
@@ -202,7 +209,7 @@ void obj2voxel_set_unit_transform(obj2voxel_instance *instance, int transform[9]
  * @param instance the instance
  * @param bounds the mesh boundaries: min_x, min_y, min_z, max_x, max_y, max_z
  */
-void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, float bounds[6]);
+void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, const float bounds[6]);
 
 // TRIANGLES ===========================================================================================================
 
@@ -211,7 +218,7 @@ void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, float bounds[6]
  * @param triangle the triangle
  * @param vertices the x, y, z, coordinates of each vertex
  */
-void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, float vertices[9]);
+void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, const float vertices[9]);
 
 /**
  * @brief Sets a triangle to be a single-colored triangle with three vertices and an rgb color.
@@ -219,7 +226,7 @@ void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, float vertices[9
  * @param vertices the x, y, z, coordinates of each vertex
  * @param color the r, g, b color
  */
-void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, float vertices[9], float color[3]);
+void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, const float vertices[9], const float color[3]);
 
 /**
  * @brief Sets a triangle to be a textured triangle with three vertices, three UV coordinates and a texture pointer.
@@ -229,8 +236,8 @@ void obj2voxel_set_triangle_colored(obj2voxel_triangle *triangle, float vertices
  * @param texture the texture pointer (not null)
  */
 void obj2voxel_set_triangle_textured(obj2voxel_triangle *triangle,
-                                     float vertices[9],
-                                     float textures[6],
+                                     const float vertices[9],
+                                     const float textures[6],
                                      obj2voxel_texture *texture);
 
 // TEXTURES ============================================================================================================
