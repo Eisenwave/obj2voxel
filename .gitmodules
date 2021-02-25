@@ -1,3 +1,9 @@
 [submodule "voxel-io"]
 	path = voxelio
 	url = git@github.com:Eisenwave/voxel-io.git
+[submodule "args"]
+	path = taywee_args
+	url = git@github.com:Taywee/args.git
+[submodule "tinyobjloader"]
+	path = tinyobjloader
+	url = git@github.com:tinyobjloader/tinyobjloader.git
