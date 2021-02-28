@@ -66,7 +66,7 @@ OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 6;
 
 /**
  * @brief Allocates a new instance.
- * The allocation method is implementation defined.
+ * The allocation method is implementation-defined.
  * An instance must be freed using obj2voxel_free().
  * @return the instance
  */
@@ -348,6 +348,7 @@ uint32_t obj2voxel_get_worker_count(obj2voxel_instance *instance);
 
 /**
  * @brief Voxelizes using all settings, the input, and the output specified.
+ * After voxelization, an instance is no longer usable and should be freed.
  * @param instance the instance
  * @return the error code (OBJ2VOXEL_ERR_OK means no error)
  */
