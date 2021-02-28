@@ -126,7 +126,6 @@ struct obj2voxel_instance {
     // configurable
     FileOrCallback<obj2voxel_triangle_callback> input;
     FileOrCallback<obj2voxel_voxel_callback> output;
-    IVoxelSink *voxelSink = nullptr;
     Texture *defaultTexture = nullptr;
     Vec3f meshMin = Vec3f::filledWith(std::numeric_limits<float>::infinity());
     Vec3f meshMax = -meshMin;
@@ -139,12 +138,13 @@ struct obj2voxel_instance {
     int unitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
 
     // initialized during voxelization
+    IVoxelSink *voxelSink = nullptr;
     std::vector<CachedTriangle> triangles;
     std::unordered_map<uint64_t, std::vector<uint32_t>> chunks;
     uint32_t chunkCount = 0;
+    AffineTransform meshTransform;
 
     // threading
-    AffineTransform meshTransform;
     CommandQueue queue;
     std::mutex sinkMutex;
     std::mutex workerMutex;
