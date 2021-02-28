@@ -205,30 +205,31 @@ void splitTriangle_decideCase(const TexturedTriangle &t,
     const u8 caseNum = OBJ2VOXEL_LO_AND_PLANAR(val.loSum, val.planarSum);
 
     switch (caseNum) {
-    // Special case: All vertices are on the hi side of the splitting plane
+    // Special case: All vertices are on the hi side of the splitting plane.
     case OBJ2VOXEL_LO_AND_PLANAR(0, 0):
     case OBJ2VOXEL_LO_AND_PLANAR(0, 1):
     case OBJ2VOXEL_LO_AND_PLANAR(0, 2):
     case OBJ2VOXEL_LO_AND_PLANAR(0, 3):
-        return pushLoIfTrueElseHi(std::move(t), false);
+        return pushLoIfTrueElseHi(t, false);
 
     // Special case: All vertices are on the lo side of the splitting plane
     case OBJ2VOXEL_LO_AND_PLANAR(3, 0):
     case OBJ2VOXEL_LO_AND_PLANAR(3, 1):
     case OBJ2VOXEL_LO_AND_PLANAR(3, 2):
     case OBJ2VOXEL_LO_AND_PLANAR(3, 3):
-    // Special case: triangle is parallel to the splitting plane (except if all vertices are hi or lo)
+        return pushLoIfTrueElseHi(t, true);
+
+    // Special case: Triangle is parallel to the splitting plane (except if all vertices are hi or lo)
+    //               We are biased towards lo, so we push into lo.
     case OBJ2VOXEL_LO_AND_PLANAR(1, 3):
     case OBJ2VOXEL_LO_AND_PLANAR(2, 3):
-        return pushLoIfTrueElseHi(std::move(t), true);
+        return pushLoIfTrueElseHi(t, true);
 
     // Special case: Two vertices are on the splitting plane, meaning the triangle can't be split
     //               We must still make a decision whether to put it into outLo or outHi
     case OBJ2VOXEL_LO_AND_PLANAR(1, 2):
-    case OBJ2VOXEL_LO_AND_PLANAR(2, 2): {
-        const bool isNonPlanarLo = t.vertex(val.firstNonplanar())[val.axis] <= real_type(val.plane);
-        return pushLoIfTrueElseHi(std::move(t), isNonPlanarLo);
-    }
+    case OBJ2VOXEL_LO_AND_PLANAR(2, 2):
+        return pushLoIfTrueElseHi(t, val.loVertices[val.firstNonplanar()]);
 
     // Special case: One vertex lies on the splitting plane
     //               If the remaining vertices are both on one side, we also don't need to split
