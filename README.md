@@ -111,7 +111,11 @@ Supersampling will usually produce slightly more voxels.
 - **QEF** (Write)
 - **VL32** (Write)
 - **PLY** (Write)
+- **VOX (Magica)** (Write, Experimental)
 - **XYZRGB** (Write)
+
+**Warning:** VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
+Use of streamable formats like VL32 is highly recommended, only use VOX for lower resolutions.
 
 ### PLY
 
