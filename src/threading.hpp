@@ -9,9 +9,7 @@
 #include <condition_variable>
 #include <mutex>
 
-namespace obj2voxel {
-
-namespace async {
+namespace obj2voxel::async {
 
 /**
  * @brief An asynchronous implementation of a ring buffer.
@@ -66,15 +64,6 @@ public:
         writeCon.notify_one();
         return true;
     }
-
-#if 0
-    /// Blocks the thread until the buffer has been emptied by other treads.
-    void waitUntilEmpty()
-    {
-        std::unique_lock<std::mutex> lock{mutex};
-        writeCon.wait(lock, [this] { return buffer.empty(); });
-    }
-#endif
 
     /// Clears the ring buffer.
     void clear()
@@ -211,8 +200,6 @@ public:
     }
 };
 
-}  // namespace async
-
-}  // namespace obj2voxel
+}  // namespace obj2voxel::async
 
 #endif  // OBJ2VOXEL_THREADING_HPP
