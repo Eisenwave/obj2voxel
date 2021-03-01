@@ -7,6 +7,8 @@
 #include "voxelio/image.hpp"
 #include "voxelio/vec.hpp"
 
+#include <optional>
+
 namespace obj2voxel {
 
 using namespace voxelio;
@@ -174,7 +176,7 @@ struct obj2voxel_triangle : public obj2voxel::TexturedTriangle {
 
     obj2voxel_triangle() : texture{nullptr} {}
 
-    constexpr obj2voxel_triangle(obj2voxel::TriangleType type) : type{type}, texture{nullptr} {}
+    obj2voxel_triangle(obj2voxel::TriangleType type) : type{type}, texture{nullptr} {}
 
     obj2voxel::Vec3f colorAt_f(obj2voxel::Vec2f uv) const
     {
