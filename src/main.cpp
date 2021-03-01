@@ -80,16 +80,18 @@ constexpr bool isSupportedFormat<FilePurpose::OUTPUT>(FileType type)
 template <FilePurpose PURPOSE>
 FileType getAndValidateFileType(const std::string &file)
 {
-    constexpr bool input = PURPOSE == FilePurpose::INPUT;
+    constexpr bool isInput = PURPOSE == FilePurpose::INPUT;
 
     std::optional<FileType> type = detectFileType(file);
     if (not type.has_value()) {
-        VXIO_LOG(WARNING, "Can't detect file type of \"" + file + '"' + (input ? ", assuming Wavefront OBJ" : ""));
+        VXIO_LOG(WARNING, "Can't detect file type of \"" + file + '"' + (isInput ? ", assuming Wavefront OBJ" : ""));
         return FileType::WAVEFRONT_OBJ;
     }
 
     if (not isSupportedFormat<PURPOSE>(*type)) {
-        VXIO_LOG(ERROR, "Detected input file type (" + std::string(nameOf(*type)) + ") is not supported");
+        VXIO_LOG(ERROR,
+                 "Detected " + std::string(isInput ? "input" : "output") + " file type (" + std::string(nameOf(*type)) +
+                     ") is not supported");
         std::exit(1);
     }
     return *type;
@@ -114,7 +116,7 @@ int mainImpl(std::string inFile,
     }
 
     FileType inType = getAndValidateFileType<FilePurpose::INPUT>(inFile);
-    FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(inFile);
+    FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(outFile);
 
     if (resolution >= 1024 * 1024) {
         VXIO_LOG(WARNING, "Very high resolution (" + stringifyLargeInt(resolution) + "), intentional?")
