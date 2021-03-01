@@ -50,6 +50,52 @@ constexpr const char *nameOfColorStrategy(obj2voxel_enum_t strategy)
     return strategy == OBJ2VOXEL_BLEND_STRATEGY ? "blend" : "max";
 }
 
+enum class FilePurpose { INPUT, OUTPUT };
+
+template <FilePurpose PURPOSE>
+constexpr bool isSupportedFormat(FileType type);
+
+template <>
+constexpr bool isSupportedFormat<FilePurpose::INPUT>(FileType type)
+{
+    switch (type) {
+    case FileType::WAVEFRONT_OBJ:
+    case FileType::STEREOLITHOGRAPHY: return true;
+    default: return false;
+    }
+}
+
+template <>
+constexpr bool isSupportedFormat<FilePurpose::OUTPUT>(FileType type)
+{
+    switch (type) {
+    case FileType::MAGICA_VOX:
+    case FileType::QUBICLE_EXCHANGE:
+    case FileType::STANFORD_TRIANGLE:
+    case FileType::VL32:
+    case FileType::XYZRGB: return true;
+    default: return false;
+    }
+}
+
+template <FilePurpose PURPOSE>
+FileType getAndValidateFileType(const std::string &file)
+{
+    constexpr bool input = PURPOSE == FilePurpose::INPUT;
+
+    std::optional<FileType> type = detectFileType(file);
+    if (not type.has_value()) {
+        VXIO_LOG(WARNING, "Can't detect file type of \"" + file + '"' + (input ? ", assuming Wavefront OBJ" : ""));
+        return FileType::WAVEFRONT_OBJ;
+    }
+
+    if (not isSupportedFormat<PURPOSE>(*type)) {
+        VXIO_LOG(ERROR, "Detected input file type (" + std::string(nameOf(*type)) + ") is not supported");
+        std::exit(1);
+    }
+    return *type;
+}
+
 int mainImpl(std::string inFile,
              std::string outFile,
              unsigned resolution,
@@ -68,35 +114,8 @@ int mainImpl(std::string inFile,
         return 1;
     }
 
-    std::optional<FileType> inType = detectFileType(inFile);
-    if (not inType.has_value()) {
-        VXIO_LOG(WARNING, "Can't detect file type of \"" + inFile + "\", assuming Wavefront OBJ");
-        inType = FileType::WAVEFRONT_OBJ;
-    }
-
-    if (*inType != FileType::WAVEFRONT_OBJ && *inType != FileType::STEREOLITHOGRAPHY) {
-        VXIO_LOG(ERROR, "Detected input file type (" + std::string(nameOf(*inType)) + ") is not supported");
-        return 1;
-    }
-
-    std::optional<FileType> outType = detectFileType(outFile);
-    if (not outType.has_value()) {
-        VXIO_LOG(ERROR, "Can't detect file type of \"" + outFile + "\"");
-        return 1;
-    }
-
-    static const std::set<FileType> supportedOut{
-        FileType::QUBICLE_EXCHANGE, FileType::VL32, FileType::STANFORD_TRIANGLE, FileType::XYZRGB};
-    if (supportedOut.find(*outType) == supportedOut.end()) {
-        VXIO_LOG(ERROR, "Detected output file type (" + std::string(nameOf(*outType)) + ") is not supported");
-        return 1;
-    }
-
-    std::optional<FileOutputStream> outStream = FileOutputStream::open(outFile);
-    if (not outStream.has_value()) {
-        VXIO_LOG(ERROR, "Failed to open \"" + outFile + "\" for write");
-        return 1;
-    }
+    FileType inType = getAndValidateFileType<FilePurpose::INPUT>(inFile);
+    FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(inFile);
 
     if (resolution >= 1024 * 1024) {
         VXIO_LOG(WARNING, "Very high resolution (" + stringifyLargeInt(resolution) + "), intentional?")
@@ -120,8 +139,8 @@ int mainImpl(std::string inFile,
     }
 
     obj2voxel_set_parallel(instance, threads != 0);
-    obj2voxel_set_input_file(instance, inFile.c_str(), nullptr);
-    obj2voxel_set_output_file(instance, outFile.c_str(), nullptr);
+    obj2voxel_set_input_file(instance, inFile.c_str(), extensionOf(inType));
+    obj2voxel_set_output_file(instance, outFile.c_str(), extensionOf(outType));
 
     obj2voxel_texture *texture = nullptr;
     if (not textureFile.empty()) {

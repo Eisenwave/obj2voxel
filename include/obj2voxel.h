@@ -146,7 +146,7 @@ void obj2voxel_set_texture(obj2voxel_instance *instance, obj2voxel_texture *text
  * The file is not loaded immediately, but when voxelization starts.
  * @param instance the instance
  * @param file the file
- * @param type the file type as an extension without a dot or null for auto-detection
+ * @param type the file type as an extension without a dot or null for auto-detection (e.g. "vox")
  */
 void obj2voxel_set_input_file(obj2voxel_instance *instance, const char *file, const char *type);
 
@@ -168,7 +168,7 @@ void obj2voxel_set_input_callback(obj2voxel_instance *instance,
  * The file is not written immediately, but when voxelization starts.
  * @param instance the instance
  * @param file the file
- * @param type the file type as an extension without a dot or null for auto-detection
+ * @param type the file type as an extension without a dot or null for auto-detection (e.g. "vox")
  */
 void obj2voxel_set_output_file(obj2voxel_instance *instance, const char *file, const char *type);
 

@@ -7,6 +7,7 @@
 #include "voxelio/format/png.hpp"
 #include "voxelio/format/qef.hpp"
 #include "voxelio/format/vl32.hpp"
+#include "voxelio/format/vox.hpp"
 #include "voxelio/format/xyzrgb.hpp"
 
 #include "voxelio/filetype.hpp"
@@ -317,6 +318,7 @@ namespace {
 AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 {
     switch (type) {
+    case FileType::MAGICA_VOX: return new vox::Writer{stream};
     case FileType::QUBICLE_EXCHANGE: return new qef::Writer{stream};
     case FileType::VL32: return new vl32::Writer{stream};
     case FileType::STANFORD_TRIANGLE: return new ply::Writer{stream};
@@ -328,8 +330,9 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 struct CallbackVoxelSink final : public IVoxelSink {
     obj2voxel_voxel_callback callback;
     void *callbackData;
-    bool good = true;
+
     usize voxelCount = 0;
+    bool good = true;
 
     CallbackVoxelSink(obj2voxel_voxel_callback callback, void *callbackData = nullptr)
         : callback{callback}, callbackData{callbackData}
@@ -369,10 +372,11 @@ private:
 
     std::unique_ptr<OutputStream> stream;
     std::unique_ptr<AbstractListWriter> writer;
-    const bool usePalette;
     std::vector<Voxel32> buffer;
-    ResultCode err = ResultCode::OK;
+
     usize voxelCount = 0;
+    ResultCode err = ResultCode::OK;
+    const bool usePalette;
     bool finalized = false;
 
 public:
@@ -406,7 +410,8 @@ public:
 VoxelioVoxelSink::VoxelioVoxelSink(std::unique_ptr<OutputStream> out, FileType outFormat, usize resolution)
     : stream{std::move(out)}, writer{makeWriter(*stream, outFormat)}, usePalette{requiresPalette(outFormat)}
 {
-    writer->setCanvasDimensions(Vec<usize, 3>::filledWith(resolution).cast<u32>());
+    ResultCode sizeResult = writer->setGlobalVolumeSize(Vec<usize, 3>::filledWith(resolution).cast<u32>());
+    VXIO_ASSERT(isGood(sizeResult));
 
     const bool usePalette = requiresPalette(outFormat);
     VXIO_LOG(DEBUG, "Writing " + std::string(nameOf(outFormat)) + (usePalette ? " with" : " without") + " palette");
