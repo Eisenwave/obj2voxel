@@ -106,16 +106,20 @@ Supersampling will usually produce slightly more voxels.
   
 ## Supported Formats
 
-- **Wavefront OBJ** (Read)
-- **STL (Stereolithography)** (Read)
-- **QEF** (Write)
-- **VL32** (Write)
-- **PLY** (Write)
-- **VOX (Magica)** (Write, Experimental)
-- **XYZRGB** (Write)
+| Name                    | Extension | Purpose    |
+| ----------------------- | --------- | ---------- |
+| Wavefront OBJ           | `obj`     | Input      |
+| Stereolithography       | `stl`     | Input      |
+| Stanford Triangle       | `ply`     | Output     |
+| Qubicle Exchange Format | `qef`     | Output     |
+| Magica Voxel            | `vox`     | Output\*   |
+| VL32                    | `vl32`    | Output     |
+| XYZRGB                  | `xyzrgb`  | Output\*\* |
 
-**Warning:** VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
+**\*Warning:** VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
 Use of streamable formats like VL32 is highly recommended, only use VOX for lower resolutions.
+
+**\*\*Note**: XYZRGB's official extension is `xyzrgb` but the software [*FileToVox*](https://github.com/Zarbuz/FileToVox) uses the extension `xyz` instead. Rename the files before importing into *FileToVox*.
 
 ### PLY
 
