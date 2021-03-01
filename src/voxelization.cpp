@@ -1,5 +1,7 @@
 #include "voxelization.hpp"
 
+#include "constants.hpp"
+
 #include <cmath>
 #include <set>
 #include <vector>
@@ -12,7 +14,6 @@ namespace {
 
 // UTILITY & CONSTANTS =================================================================================================
 
-constexpr bool DISABLE_PLANE_DISTANCE_TEST = false;
 constexpr real_type EPSILON = real_type(1) / (1 << 16);
 
 inline bool isZero(real_type x)
@@ -468,7 +469,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
             for (u32 x = triangleMin.x(); x < triangleMax.x(); ++x) {
                 const Vec3u32 pos = {x, y, z};
 
-                if constexpr (not DISABLE_PLANE_DISTANCE_TEST) {
+                if constexpr (ENABLE_PLANE_DISTANCE_TEST) {
                     const Vec3 center = pos + Vec3::filledWith(0.5f);
                     const real_type signedDistance = distance_point_plane(center, planeOrg, planeNormal);
 

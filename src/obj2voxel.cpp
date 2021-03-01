@@ -1,5 +1,6 @@
 #include "obj2voxel.h"
 
+#include "constants.hpp"
 #include "io.hpp"
 #include "threading.hpp"
 #include "voxelization.hpp"
@@ -158,9 +159,6 @@ struct obj2voxel_instance {
 
 namespace obj2voxel {
 namespace {
-
-constexpr u32 CHUNK_SIZE = 64;
-constexpr u32 BATCH_SIZE = 1024;
 
 void findMeshBounds(obj2voxel_instance &instance, u32 batchStartIndex)
 {

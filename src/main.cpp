@@ -1,6 +1,7 @@
 #include "obj2voxel.h"
 
 #include "3rd_party/args.hpp"
+#include "constants.hpp"
 
 #include "voxelio/filetype.hpp"
 #include "voxelio/log.hpp"
@@ -41,9 +42,7 @@ namespace {
 
 using namespace voxelio;
 
-constexpr bool DEFAULT_SUPERSAMPLE = false;
-constexpr obj2voxel_enum_t DEFAULT_COLOR_STRATEGY = OBJ2VOXEL_MAX_STRATEGY;
-constexpr Vec3u DEFAULT_PERMUTATION = {0, 1, 2};
+constexpr Vec3u IDENTITY_PERMUTATION = {0, 1, 2};
 
 constexpr const char *nameOfColorStrategy(obj2voxel_enum_t strategy)
 {
@@ -103,7 +102,7 @@ int mainImpl(std::string inFile,
              std::string textureFile = "",
              bool supersample = DEFAULT_SUPERSAMPLE,
              obj2voxel_enum_t colorStrategy = DEFAULT_COLOR_STRATEGY,
-             Vec3u permutation = DEFAULT_PERMUTATION)
+             Vec3u permutation = IDENTITY_PERMUTATION)
 {
     VXIO_LOG(INFO,
              "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringifyLargeInt(resolution) +
@@ -184,14 +183,15 @@ int mainImpl(std::string inFile,
 
 void initLogging()
 {
-    constexpr bool asyncLogging = true;
-
     if constexpr (voxelio::build::DEBUG) {
-        setLogLevel(LogLevel::DEBUG);
+        obj2voxel_set_log_level(DEBUG_LOG_LEVEL);
         VXIO_LOG(DEBUG, "Running debug build");
     }
+    else {
+        obj2voxel_set_log_level(RELEASE_LOG_LEVEL);
+    }
 
-    setLogBackend(nullptr, asyncLogging);
+    setLogBackend(nullptr, ENABLE_ASYNC_LOGGING);
 }
 
 // CLI ARGUMENT PARSING ================================================================================================
@@ -222,25 +222,6 @@ static bool parsePermutation(std::string str, voxelio::Vec3u &out)
     return found[0] + found[1] + found[2] == 3;
 }
 
-constexpr const char *HEADER = "obj2voxel - OBJ and STL voxelizer";
-constexpr const char *FOOTER = "Visit at https://github.com/eisenwave/obj2voxel";
-constexpr const char *HELP_DESCR = "Display this help menu.";
-constexpr const char *INPUT_DESCR = "First argument. Path to OBJ or STL input file.";
-constexpr const char *OUTPUT_DESCR = "Second argument. Path to QEF, PLY or VL32 output file.";
-constexpr const char *TEXTURE_DESCR = "Fallback texture path. Used when model has UV coordinates but textures can't "
-                                      "be found in the material library. (Default: none)";
-constexpr const char *RESOLUTION_DESCR = "Maximum voxel grid resolution on any axis. (Required)";
-constexpr const char *STRATEGY_DESCR =
-    "Strategy for combining voxels of different triangles. "
-    "Blend gives smoother colors at triangle edges but might produce new and unwanted colors. (Default: max)";
-constexpr const char *PERMUTATION_ARG = "Permutation of xyz axes in the model. (Default: xyz)";
-constexpr const char *SS_DESCR =
-    "Enables supersampling. "
-    "The model is voxelized at double resolution and then downscaled while combining colors.";
-constexpr const char *THREADS_DESCR = "Number of worker threads to be started for voxelization. "
-                                      "Set to zero for single-threaded voxelization. "
-                                      "(Default: CPU threads)";
-
 int main(int argc, char **argv)
 #else
 int main()
@@ -257,7 +238,7 @@ int main()
                                                                         {"blend", OBJ2VOXEL_BLEND_STRATEGY}};
     const unsigned threadCount = std::thread::hardware_concurrency();
 
-    args::ArgumentParser parser(HEADER, FOOTER);
+    args::ArgumentParser parser(CLI_HEADER, CLI_FOOTER);
 
     auto ggroup = args::Group(parser, "General Options:");
     auto helpArg = args::HelpFlag(ggroup, "help", HELP_DESCR, {'h', "help"});
