@@ -59,26 +59,26 @@ private:
     WeightedCombineFunction<Vec3f> combineFunction;
 
 public:
-    Voxelizer(ColorStrategy colorStrategy);
+    Voxelizer(ColorStrategy colorStrategy) noexcept;
 
-    Voxelizer(const Voxelizer &) = delete;
-    Voxelizer(Voxelizer &&) = default;
+    Voxelizer(const Voxelizer &) noexcept = delete;
+    Voxelizer(Voxelizer &&) noexcept = default;
 
-    void voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max);
+    void voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max) noexcept;
 
-    void mergeResults(VoxelMap<WeightedColor> &out)
+    void mergeResults(VoxelMap<WeightedColor> &out) noexcept
     {
         merge(out, voxels_);
     }
 
-    void merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source);
+    void merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source) noexcept;
 
     /**
      * @brief Scales down the voxels of the voxelizer to half the original resolution.
      */
-    void downscale();
+    void downscale() noexcept;
 
-    VoxelMap<WeightedColor> &voxels()
+    VoxelMap<WeightedColor> &voxels() noexcept
     {
         return voxels_;
     }
@@ -96,9 +96,9 @@ private:
      * @param buffers three buffers which are used for intermediate operations
      * @param out the output map of voxel locations to weighted colors
      */
-    void voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max);
+    void voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept;
 
-    void consumeUvBuffer(const VisualTriangle &inputTriangle);
+    void consumeUvBuffer(const VisualTriangle &inputTriangle) noexcept;
 };
 
 }  // namespace obj2voxel

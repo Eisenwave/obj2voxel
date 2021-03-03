@@ -28,7 +28,7 @@ class RingBuffer {
 public:
     /// Pops one element from the ring buffer.
     /// If the buffer is empty, the thread will be blocked until an element is available.
-    T pop()
+    T pop() noexcept
     {
         std::unique_lock<std::mutex> lock{mutex};
         readCon.wait(lock, [this] {
@@ -41,7 +41,7 @@ public:
 
     /// Pushes one element to the ring buffer.
     /// If the buffer is full, the thread will be blocked until space is available.
-    void push(T value)
+    void push(T value) noexcept
     {
         std::unique_lock<std::mutex> lock{mutex};
         writeCon.wait(lock, [this] {
@@ -54,7 +54,7 @@ public:
     /// Tries to pop one element from the ring buffer.
     /// If the buffer is empty, false will be returned without waiting for a pushed element.
     /// Otherwise, the result will written to out and true is returned.
-    bool tryPop(T &out)
+    bool tryPop(T &out) noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         if (buffer.empty()) {
@@ -66,7 +66,7 @@ public:
     }
 
     /// Clears the ring buffer.
-    void clear()
+    void clear() noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         buffer.clear();
@@ -75,7 +75,7 @@ public:
 
     /// Returns the least recently pushed element without popping it.
     /// If the buffer is empty, the thread will be blocked until an element is available.
-    const T &peek() const
+    const T &peek() const noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         readCon.wait(lock, [this] {
@@ -85,21 +85,21 @@ public:
     }
 
     /// Returns the current size thread-safely.
-    usize size() const
+    usize size() const noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         return buffer.size();
     }
 
     /// Returns true if the buffer is empty thread-safely.
-    bool empty() const
+    bool empty() const noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         return buffer.empty();
     }
 
     /// Returns true if the buffer is full thread-safely.
-    bool full() const
+    bool full() const noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         return buffer.full();
@@ -116,9 +116,9 @@ class Event {
     mutable std::condition_variable condition;
 
 public:
-    explicit Event(bool triggered = false) : flag{triggered} {}
+    explicit Event(bool triggered = false) noexcept : flag{triggered} {}
 
-    bool wait()
+    bool wait() noexcept
     {
         std::unique_lock<std::mutex> lock{mutex};
         if (flag) {
@@ -128,14 +128,14 @@ public:
         return true;
     }
 
-    void trigger()
+    void trigger() noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         flag = true;
         condition.notify_all();
     }
 
-    void reset()
+    void reset() noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         flag = false;
@@ -154,10 +154,10 @@ private:
     mutable std::condition_variable condition;
 
 public:
-    Counter(T count = {}) : count{count} {}
+    Counter(T count = {}) noexcept : count{count} {}
 
     /// Increments the counter atomically.
-    Counter &operator++()
+    Counter &operator++() noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         ++count;
@@ -166,7 +166,7 @@ public:
     }
 
     /// Decrements the counter atomically.
-    Counter &operator--()
+    Counter &operator--() noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         --count;
@@ -175,7 +175,7 @@ public:
     }
 
     template <typename Predicate, std::enable_if_t<std::is_invocable_r_v<bool, Predicate, type>, int> = 0>
-    void wait(Predicate predicate) const
+    void wait(Predicate predicate) const noexcept
     {
         std::unique_lock<std::mutex> lock{mutex};
         if (predicate(count)) {
@@ -186,14 +186,14 @@ public:
         });
     }
 
-    void waitUntilZero() const
+    void waitUntilZero() const noexcept
     {
         wait([this](type t) {
             return t == 0;
         });
     }
 
-    const type &operator*() const
+    const type &operator*() const noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         return count;

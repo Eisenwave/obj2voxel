@@ -496,9 +496,9 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
 
 // VOXELIZER IMPLEMENTATION ============================================================================================
 
-Voxelizer::Voxelizer(ColorStrategy colorStrategy) : combineFunction{combineFunctionOf(colorStrategy)} {}
+Voxelizer::Voxelizer(ColorStrategy colorStrategy) noexcept : combineFunction{combineFunctionOf(colorStrategy)} {}
 
-void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max)
+void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 max) noexcept
 {
     VXIO_ASSERT(uvBuffer.empty());
 
@@ -506,7 +506,7 @@ void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 ma
     consumeUvBuffer(triangle);
 }
 
-void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max)
+void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept
 {
     for (size_t i = 0; i < 3; ++i) {
         buffers[i].clear();
@@ -528,7 +528,7 @@ void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, 
     }
 }
 
-void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle)
+void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle) noexcept
 {
     for (auto &[index, weightedUv] : uvBuffer) {
         Vec3u32 pos = uvBuffer.posOf(index);
@@ -543,7 +543,7 @@ void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle)
     uvBuffer.clear();
 }
 
-void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source)
+void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &source) noexcept
 {
     for (auto &[index, color] : source) {
         auto [location, success] = target.emplace(index, color);
@@ -553,7 +553,7 @@ void Voxelizer::merge(VoxelMap<WeightedColor> &target, VoxelMap<WeightedColor> &
     }
 }
 
-void Voxelizer::downscale()
+void Voxelizer::downscale() noexcept
 {
     constexpr u32 divisor = 2;
 

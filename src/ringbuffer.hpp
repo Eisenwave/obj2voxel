@@ -18,12 +18,12 @@ class RingBuffer {
     usize r = 0, w = 0, avail = 0;
 
 public:
-    constexpr RingBuffer() = default;
+    constexpr RingBuffer() noexcept = default;
 
     /// Pops one element from the ring buffer.
     /// The result is always the least recently pushed element.
     /// This method fails if the buffer is empty.
-    constexpr T pop()
+    constexpr T pop() noexcept
     {
         VXIO_DEBUG_ASSERT_NE(avail, 0);
         --avail;
@@ -33,7 +33,7 @@ public:
 
     /// Pushes one element to the ring buffer.
     /// This method fails if the buffer is full.
-    constexpr void push(T value)
+    constexpr void push(T value) noexcept
     {
         VXIO_DEBUG_ASSERT_NE(avail, N);
         ++avail;
@@ -42,33 +42,33 @@ public:
     }
 
     /// Clears the ring buffer.
-    constexpr void clear()
+    constexpr void clear() noexcept
     {
         r = w = avail = 0;
     }
 
     /// Returns the least recently pushed element without popping it.
     /// This method fails if the buffer is empty.
-    constexpr const T &peek() const
+    constexpr const T &peek() const noexcept
     {
         VXIO_DEBUG_ASSERT_NE(avail, 0);
         return content[r];
     }
 
     /// Returns the current size of the ring buffer which can be at most N.
-    constexpr usize size() const
+    constexpr usize size() const noexcept
     {
         return avail;
     }
 
     /// Returns true if the buffer is empty.
-    constexpr bool empty() const
+    constexpr bool empty() const noexcept
     {
         return avail == 0;
     }
 
     /// Returns true if the buffer is full.
-    constexpr bool full() const
+    constexpr bool full() const noexcept
     {
         return avail == N;
     }
