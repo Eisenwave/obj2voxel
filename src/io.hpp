@@ -25,7 +25,8 @@ void dumpDebugStl(const std::string &path);
  * internal format.
  */
 struct ITriangleStream {
-    static std::unique_ptr<ITriangleStream> fromCallback(obj2voxel_triangle_callback callback, void *callbackData);
+    static std::unique_ptr<ITriangleStream> fromCallback(obj2voxel_triangle_callback callback,
+                                                         void *callbackData) noexcept;
 
     /**
      * @brief Loads an OBJ file from disk.
@@ -33,7 +34,8 @@ struct ITriangleStream {
      * @param textureFile the default texture file, to be used for vertices with no material but UV coordinates
      * @return the OBJ triangle stream or nullptr if the file couldn't be opened
      */
-    static std::unique_ptr<ITriangleStream> fromObjFile(const std::string &inFile, const Texture *defaultTexture);
+    static std::unique_ptr<ITriangleStream> fromObjFile(const std::string &inFile,
+                                                        const Texture *defaultTexture) noexcept;
 
     /**
      * @brief Loads an STL file from disk.
@@ -43,37 +45,37 @@ struct ITriangleStream {
      * @param inFile the input file path
      * @return the STL triangle stream or nullptr if the file couldn't be opened
      */
-    static std::unique_ptr<ITriangleStream> fromStlFile(const std::string &inFile);
+    static std::unique_ptr<ITriangleStream> fromStlFile(const std::string &inFile) noexcept;
 
     /// virtual destructor
-    virtual ~ITriangleStream();
+    virtual ~ITriangleStream() noexcept;
 
     /// Assigns the next triangle.
     /// Returns true if another triangle could be obtained from the stream, else false.
     /// If false gets returned, this signals the end of the stream and no more triangles should be read.
-    virtual bool next(VisualTriangle &out) = 0;
+    virtual bool next(VisualTriangle &out) noexcept = 0;
 };
 
 struct IVoxelSink {
-    static std::unique_ptr<IVoxelSink> fromCallback(obj2voxel_voxel_callback callback, void *callbackData);
+    static std::unique_ptr<IVoxelSink> fromCallback(obj2voxel_voxel_callback callback, void *callbackData) noexcept;
     static std::unique_ptr<IVoxelSink> fromVoxelio(std::unique_ptr<OutputStream> out,
                                                    FileType outFormat,
-                                                   usize resolution);
+                                                   usize resolution) noexcept;
 
     /// Virtual destructor, flushes the sink.
-    virtual ~IVoxelSink();
+    virtual ~IVoxelSink() noexcept;
 
     /// Returns true if the writer has not encountered any errors yet and the sink can take more voxels.
-    virtual bool canWrite() const = 0;
+    virtual bool canWrite() const noexcept = 0;
 
     /// Returns the total number of voxels written to the sink.
-    virtual usize voxelsWritten() const = 0;
+    virtual usize voxelsWritten() const noexcept = 0;
 
     /// Writes a buffer of voxels to the sink.
-    virtual void write(Voxel32 voxels[], usize size) = 0;
+    virtual void write(Voxel32 voxels[], usize size) noexcept = 0;
 
     /// Flushes the sink.
-    virtual void finalize() = 0;
+    virtual void finalize() noexcept = 0;
 };
 
 /// Loads a texture with the given file name.

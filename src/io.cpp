@@ -58,7 +58,7 @@ void dumpDebugStl(const std::string &path)
 
 // TRIANGLE STREAMS ====================================================================================================
 
-ITriangleStream::~ITriangleStream() = default;
+ITriangleStream::~ITriangleStream() noexcept = default;
 
 namespace {
 
@@ -71,46 +71,82 @@ struct CallbackTriangleStream final : public ITriangleStream {
     {
     }
 
-    bool next(VisualTriangle &out) final;
+    bool next(VisualTriangle &out) noexcept final;
 };
 
-bool CallbackTriangleStream::next(VisualTriangle &out)
+bool CallbackTriangleStream::next(VisualTriangle &out) noexcept
 {
     return callback(callbackData, &out);
 }
 
 struct ObjTriangleStream final : public ITriangleStream {
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::map<std::string, Texture> textures;
-    const Texture *defaultTexture = nullptr;
+public:
+    using attrib_type = tinyobj::attrib_t;
+    using shapes_type = std::vector<tinyobj::shape_t>;
+    using materials_type = std::vector<tinyobj::material_t>;
+    using textures_type = std::map<std::string, Texture>;
+
+private:
+    attrib_type attrib;
+    shapes_type shapes;
+    materials_type materials;
+    textures_type textures;
+    const Texture *defaultTexture;
 
     usize shapesIndex = 0;
     usize faceIndex = 0;
+    usize faceCountOfCurrentShape;
+
     usize indexOffset = 0;
 
-    bool hasNext() const
+public:
+    ObjTriangleStream(attrib_type attrib,
+                      shapes_type shapes,
+                      materials_type materials,
+                      textures_type textures,
+                      const Texture *defaultTexture)
+        : attrib{std::move(attrib)}
+        , shapes{std::move(shapes)}
+        , materials{std::move(materials)}
+        , textures{std::move(textures)}
+        , defaultTexture{defaultTexture}
+        , faceCountOfCurrentShape{faceCountOfShapeOrZero(0)}
     {
-        return shapesIndex < shapes.size() && faceIndex < shapes[shapesIndex].mesh.num_face_vertices.size();
     }
 
-    bool next(VisualTriangle &out) final;
+    bool next(VisualTriangle &out) noexcept final;
+
+private:
+    bool hasNext() const
+    {
+        return shapesIndex < shapes.size() && faceIndex < faceCountOfCurrentShape;
+    }
+
+    /// Returns the face count of the shape at the given index or zero if the index is out of bounds.
+    usize faceCountOfShapeOrZero(usize index) const
+    {
+        return index >= shapes.size() ? 0 : shapes[index].mesh.num_face_vertices.size();
+    }
 };
 
 struct StlTriangleStream final : public ITriangleStream {
+private:
     std::vector<f32> vertices;
     usize index = 0;
 
+public:
+    StlTriangleStream(std::vector<f32> vertices) noexcept : vertices{std::move(vertices)} {}
+
+    bool next(VisualTriangle &out) noexcept final;
+
+private:
     bool hasNext() const
     {
         return index < vertices.size();
     }
-
-    bool next(VisualTriangle &out) final;
 };
 
-bool ObjTriangleStream::next(VisualTriangle &triangle)
+bool ObjTriangleStream::next(VisualTriangle &triangle) noexcept
 {
     if (not hasNext()) {
         return false;
@@ -172,12 +208,15 @@ bool ObjTriangleStream::next(VisualTriangle &triangle)
     }
 
     indexOffset += vertexCount;
-    ++faceIndex;
-
+    if (++faceIndex >= faceCountOfCurrentShape) {
+        faceIndex = 0;
+        indexOffset = 0;
+        faceCountOfCurrentShape = faceCountOfShapeOrZero(++shapesIndex);
+    }
     return true;
 }
 
-bool StlTriangleStream::next(VisualTriangle &triangle)
+bool StlTriangleStream::next(VisualTriangle &triangle) noexcept
 {
     if (not hasNext()) {
         return false;
@@ -195,23 +234,26 @@ bool StlTriangleStream::next(VisualTriangle &triangle)
 
 }  // namespace
 
-std::unique_ptr<ITriangleStream> ITriangleStream::fromCallback(obj2voxel_triangle_callback callback, void *callbackData)
+std::unique_ptr<ITriangleStream> ITriangleStream::fromCallback(obj2voxel_triangle_callback callback,
+                                                               void *callbackData) noexcept
 {
     return std::unique_ptr<ITriangleStream>{new CallbackTriangleStream{callback, callbackData}};
 }
 
 // FILE LOADING ========================================================================================================
 
-std::unique_ptr<ITriangleStream> ITriangleStream::fromObjFile(const std::string &inFile, const Texture *defaultTexture)
+std::unique_ptr<ITriangleStream> ITriangleStream::fromObjFile(const std::string &inFile,
+                                                              const Texture *defaultTexture) noexcept
 {
     std::string warn;
     std::string err;
 
-    ObjTriangleStream stream;
-    stream.defaultTexture = defaultTexture;
+    ObjTriangleStream::attrib_type attrib;
+    ObjTriangleStream::shapes_type shapes;
+    ObjTriangleStream::materials_type materials;
+    ObjTriangleStream::textures_type textures;
 
-    bool tinyobjSuccess =
-        tinyobj::LoadObj(&stream.attrib, &stream.shapes, &stream.materials, &warn, &err, inFile.c_str());
+    bool tinyobjSuccess = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, inFile.c_str());
     trim(warn);
     trim(err);
 
@@ -228,22 +270,23 @@ std::unique_ptr<ITriangleStream> ITriangleStream::fromObjFile(const std::string 
         return nullptr;
     }
 
-    for (tinyobj::material_t &material : stream.materials) {
+    for (tinyobj::material_t &material : materials) {
         std::string name = material.diffuse_texname;
         if (name.empty()) {
             continue;
         }
         std::optional<Texture> tex = loadTexture(name, material.name);
         if (tex.has_value()) {
-            stream.textures.emplace(std::move(name), std::move(*tex));
+            textures.emplace(std::move(name), std::move(*tex));
         }
     }
-    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(stream.textures.size()) + " material textures");
+    VXIO_LOG(INFO, "Loaded " + stringifyLargeInt(textures.size()) + " material textures");
 
-    return std::make_unique<ObjTriangleStream>(std::move(stream));
+    return std::unique_ptr<ObjTriangleStream>(new ObjTriangleStream{
+        std::move(attrib), std::move(shapes), std::move(materials), std::move(textures), defaultTexture});
 }
 
-std::unique_ptr<ITriangleStream> ITriangleStream::fromStlFile(const std::string &inFile)
+std::unique_ptr<ITriangleStream> ITriangleStream::fromStlFile(const std::string &inFile) noexcept
 {
     std::optional<FileInputStream> stream = FileInputStream::open(inFile);
     if (not stream.has_value()) {
@@ -268,7 +311,7 @@ std::unique_ptr<ITriangleStream> ITriangleStream::fromStlFile(const std::string 
         return nullptr;
     }
 
-    StlTriangleStream result;
+    std::vector<float> vertices;
     for (u32 i = 0; i < triangleCount; ++i) {
         f32 triangleData[12];
 
@@ -279,10 +322,10 @@ std::unique_ptr<ITriangleStream> ITriangleStream::fromStlFile(const std::string 
             return nullptr;
         }
 
-        result.vertices.insert(result.vertices.end(), triangleData + 3, triangleData + 12);
+        vertices.insert(vertices.end(), triangleData + 3, triangleData + 12);
     }
 
-    return std::make_unique<StlTriangleStream>(std::move(result));
+    return std::unique_ptr<StlTriangleStream>(new StlTriangleStream{std::move(vertices)});
 }
 
 std::optional<Texture> loadTexture(const std::string &name, const std::string &material)
@@ -311,7 +354,7 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
 
 // OUTPUT ==============================================================================================================
 
-IVoxelSink::~IVoxelSink() = default;
+IVoxelSink::~IVoxelSink() noexcept = default;
 
 namespace {
 
@@ -339,19 +382,19 @@ struct CallbackVoxelSink final : public IVoxelSink {
     {
     }
 
-    bool canWrite() const final
+    bool canWrite() const noexcept final
     {
         return good;
     }
 
-    usize voxelsWritten() const final
+    usize voxelsWritten() const noexcept final
     {
         return voxelCount;
     }
 
-    void write(Voxel32 voxels[], usize size) final;
+    void write(Voxel32 voxels[], usize size) noexcept final;
 
-    void finalize() final
+    void finalize() noexcept final
     {
         VXIO_LOG(DEBUG, "Flushing callback sink (no-op)");
     }
@@ -392,19 +435,19 @@ public:
         }
     }
 
-    bool canWrite() const final
+    bool canWrite() const noexcept final
     {
         return isGood(err);
     }
 
-    usize voxelsWritten() const final
+    usize voxelsWritten() const noexcept final
     {
         return voxelCount;
     }
 
-    void write(Voxel32 voxels[], usize size) final;
+    void write(Voxel32 voxels[], usize size) noexcept final;
 
-    void finalize() final;
+    void finalize() noexcept final;
 };
 
 VoxelioVoxelSink::VoxelioVoxelSink(std::unique_ptr<OutputStream> out, FileType outFormat, usize resolution)
@@ -419,7 +462,7 @@ VoxelioVoxelSink::VoxelioVoxelSink(std::unique_ptr<OutputStream> out, FileType o
     buffer.reserve(BUFFER_SIZE);
 }
 
-void VoxelioVoxelSink::write(Voxel32 voxels[], usize size)
+void VoxelioVoxelSink::write(Voxel32 voxels[], usize size) noexcept
 {
     VXIO_ASSERTM(not finalized, "Writing to finalized voxel sink");
     VXIO_ASSERTM(canWrite(), "Writing to a failed voxel sink");
@@ -443,7 +486,7 @@ void VoxelioVoxelSink::write(Voxel32 voxels[], usize size)
     }
 }
 
-void VoxelioVoxelSink::finalize()
+void VoxelioVoxelSink::finalize() noexcept
 {
     if (finalized) {
         return;
@@ -475,7 +518,7 @@ void VoxelioVoxelSink::finalize()
     err = writer->finalize();
 }
 
-void CallbackVoxelSink::write(Voxel32 voxels[], usize size)
+void CallbackVoxelSink::write(Voxel32 voxels[], usize size) noexcept
 {
     VXIO_ASSERTM(canWrite(), "Writing to a failed voxel sink");
 
@@ -493,14 +536,14 @@ void CallbackVoxelSink::write(Voxel32 voxels[], usize size)
 
 }  // namespace
 
-std::unique_ptr<IVoxelSink> IVoxelSink::fromCallback(obj2voxel_voxel_callback callback, void *callbackData)
+std::unique_ptr<IVoxelSink> IVoxelSink::fromCallback(obj2voxel_voxel_callback callback, void *callbackData) noexcept
 {
     return std::unique_ptr<IVoxelSink>{new CallbackVoxelSink{callback, callbackData}};
 }
 
 std::unique_ptr<IVoxelSink> IVoxelSink::fromVoxelio(std::unique_ptr<OutputStream> out,
                                                     FileType outFormat,
-                                                    usize resolution)
+                                                    usize resolution) noexcept
 {
     return std::unique_ptr<IVoxelSink>{new VoxelioVoxelSink{std::move(out), outFormat, resolution}};
 }
