@@ -518,7 +518,7 @@ void VoxelioVoxelSink::finalize() noexcept
     err = writer->finalize();
 }
 
-void CallbackVoxelSink::write(Voxel32 voxels[], usize size) noexcept
+void CallbackVoxelSink::write(Voxel32 voxels[], usize count) noexcept
 {
     VXIO_ASSERTM(canWrite(), "Writing to a failed voxel sink");
 
@@ -530,8 +530,9 @@ void CallbackVoxelSink::write(Voxel32 voxels[], usize size) noexcept
     static_assert(offsetof(Voxel32, pos) == 0);
     static_assert(offsetof(Voxel32, argb) == 12);
 
+    this->voxelCount += count;
     uint32_t *voxelData = reinterpret_cast<uint32_t *>(voxels);
-    good &= callback(callbackData, voxelData, size * 4);
+    good &= callback(callbackData, voxelData, count);
 }
 
 }  // namespace
