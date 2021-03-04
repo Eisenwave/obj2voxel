@@ -99,7 +99,8 @@ TEST(test_unitCubeProducesExpectedVoxelCount)
     obj2voxel_instance *instance = obj2voxel_alloc();
 
 #ifdef DUMP_OUTPUTS
-    std::optional<voxelio::FileOutputStream> outStream = voxelio::openForWrite("/tmp/obj2voxel_test.vl32", voxelio::OpenMode::BINARY);
+    std::optional<voxelio::FileOutputStream> outStream =
+        voxelio::openForWrite("/tmp/obj2voxel_test.vl32", voxelio::OpenMode::BINARY);
     VXIO_ASSERT(outStream.has_value());
     voxelio::vl32::Writer writer{*outStream};
     VoxelioOutput output{writer};
@@ -116,7 +117,6 @@ TEST(test_unitCubeProducesExpectedVoxelCount)
 
     VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_OK);
 
-
     constexpr size_t expectedVertexVoxels = 8;
     constexpr size_t expectedEdgeVoxels = 12 * (resolution - 2);
     constexpr size_t expectedFaceVoxels = 6 * (resolution - 2) * (resolution - 2);
@@ -131,7 +131,6 @@ TEST(test_unitCubeProducesExpectedVoxelCount)
 
 int main()
 {
-
     obj2voxel_set_log_level(OBJ2VOXEL_LOG_LEVEL_DEBUG);
 
     VXIO_LOG(INFO, "Running " + voxelio::stringify(tests.size()) + " tests ...");

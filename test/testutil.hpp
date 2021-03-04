@@ -6,8 +6,8 @@
 #include "voxelio/assert.hpp"
 #include "voxelio/voxelio.hpp"
 
-#include <vector>
 #include <cstring>
+#include <vector>
 
 // CONFIG ==============================================================================================================
 
@@ -45,7 +45,8 @@ struct TriangleInput {
 
     size_t vertexIndex = 0;
 
-    TriangleInput(const float *vertices, size_t vertexCount) : vertices{vertices}, vertexCount{vertexCount} {
+    TriangleInput(const float *vertices, size_t vertexCount) : vertices{vertices}, vertexCount{vertexCount}
+    {
         VXIO_ASSERT_EQ(vertexCount % 3, 0);
     }
 
@@ -109,7 +110,7 @@ struct IndexedPrimitiveInput {
 
     void bufferElementVertex(unsigned bufferOffset, int elementOffset)
     {
-        std::memcpy(buffer + bufferOffset, vertices + elements[elementIndex + elementOffset] * 3, sizeof (float) * 3);
+        std::memcpy(buffer + bufferOffset, vertices + elements[elementIndex + elementOffset] * 3, sizeof(float) * 3);
     }
 };
 
@@ -136,11 +137,10 @@ struct VoxelioOutput {
     {
         this->voxelCount += voxelCount;
         /// Trust me, it's safe :)
-        auto *voxelBuffer = reinterpret_cast<voxelio::Voxel32*>(rawBuffer);
+        auto *voxelBuffer = reinterpret_cast<voxelio::Voxel32 *>(rawBuffer);
         voxelio::ResultCode result = writer.write(voxelBuffer, voxelCount);
         return voxelio::isGood(result);
     }
-
 };
 
 template <typename T>
@@ -150,13 +150,12 @@ bool inputCallback(void *iter, obj2voxel_triangle *triangle)
 }
 
 template <typename T>
-bool outputCallback(void* sink, uint32_t *voxelBuffer, size_t voxelCount)
+bool outputCallback(void *sink, uint32_t *voxelBuffer, size_t voxelCount)
 {
-    return reinterpret_cast<T*>(sink)->write(voxelBuffer, voxelCount);
+    return reinterpret_cast<T *>(sink)->write(voxelBuffer, voxelCount);
 }
 
 // TEST METAPROGRAMMING ================================================================================================
-
 
 using TestFunction = void (*)(void);
 
@@ -168,10 +167,12 @@ struct NamedTest {
 /// Stores all tests for execution.
 extern std::vector<NamedTest> tests;
 
-#define TEST(name) \
-    void name(); \
-    static int name##__ = [](){tests.push_back({#name, &name}); \
-    return 0;}(); \
+#define TEST(name)                       \
+    void name();                         \
+    static int name##__ = []() {         \
+        tests.push_back({#name, &name}); \
+        return 0;                        \
+    }();                                 \
     void name()
 
 #endif
