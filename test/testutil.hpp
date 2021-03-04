@@ -169,7 +169,7 @@ extern std::vector<NamedTest> tests;
 
 #define TEST(name)                       \
     void name();                         \
-    static int name##__ = []() {         \
+    static const int name##__ = []() {   \
         tests.push_back({#name, &name}); \
         return 0;                        \
     }();                                 \
