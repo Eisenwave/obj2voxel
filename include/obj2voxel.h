@@ -48,19 +48,34 @@ OBJ2VOXEL_ENUM OBJ2VOXEL_BLEND_STRATEGY = 1;
 OBJ2VOXEL_ENUM OBJ2VOXEL_UV_CLAMP = 0;
 OBJ2VOXEL_ENUM OBJ2VOXEL_UV_WRAP = 1;
 
+/// Nothing gets logged.
 OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_SILENT = 0;
+/// Errors get logged.
 OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_ERROR = 1;
+/// Errors and warnings get logged.
 OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_WARNING = 2;
+/// Errors, warnings, and info messages get logged.
 OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_INFO = 3;
+/// All messages, including debug messages get logged.
 OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_DEBUG = 4;
 
+/// No error.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_OK = 0;
+/// No input was provided.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_INPUT = 1;
+/// No output was provided.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_OUTPUT = 2;
+/// No resolution was specified.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_RESOLUTION = 3;
+/// An I/O error occured when attempting to open the input file.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE = 4;
+/// An I/O error occured when attempting to open the output file.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE = 5;
+/// An I/O error occured when attempting write voxels.
 OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 6;
+/// Voxelization was attempted after it was already completed once.
+/// Instances are throwaway objects, only to be used once!
+OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_DOUBLE_VOXELIZATION = 7;
 
 // INSTANCE ============================================================================================================
 
@@ -173,6 +188,15 @@ void obj2voxel_set_input_callback(obj2voxel_instance *instance,
 void obj2voxel_set_output_file(obj2voxel_instance *instance, const char *file, const char *type);
 
 /**
+ * @brief Sets the output to be memory with a file type.
+ * Voxelization will happen to memory instead of to a file in this case and the output bytes can later be obtained
+ * using obj2voxel_get_output_memory().
+ * @param instance the instance
+ * @param type the file type as an extension without a dot or null for auto-detection (e.g. "vox")
+ */
+void obj2voxel_set_output_memory(obj2voxel_instance *instance, const char *type);
+
+/**
  * @brief Sets the output to a callback that consumes voxel data.
  * The data passed to the callback is laid out in VL32 format, meaning (x,y,z,argb).
  * @param instance the instance
@@ -210,6 +234,15 @@ void obj2voxel_set_unit_transform(obj2voxel_instance *instance, const int transf
  * @param bounds the mesh boundaries: min_x, min_y, min_z, max_x, max_y, max_z
  */
 void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, const float bounds[6]);
+
+/**
+ * @brief After voxelization, returns a pointer to the memory written by voxelization.
+ * If the output was not set using obj2voxel_set_output_memory, nullptr is returned and out_size remains unchanged.
+ * @param instance the instance
+ * @param out_size the memory size output parameter
+ * @return the pointer to the output memory or nullptr if the output is not a memory output
+ */
+const obj2voxel_byte_t* obj2voxel_get_output_memory(obj2voxel_instance *instance,  size_t *out_size);
 
 // TRIANGLES ===========================================================================================================
 
