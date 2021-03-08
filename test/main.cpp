@@ -12,7 +12,7 @@ namespace {
 
 // TESTS ===============================================================================================================
 
-TEST(test_errorOnMissingInput)
+TEST(errorOnMissingInput)
 {
     pushLogLevel(OBJ2VOXEL_LOG_LEVEL_SILENT);
 
@@ -29,7 +29,7 @@ TEST(test_errorOnMissingInput)
     VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_NO_INPUT);
 }
 
-TEST(test_errorOnMissingOutput)
+TEST(errorOnMissingOutput)
 {
     constexpr const float vertices[9]{0, 0, 0, 0, 0, 1, 1, 0, 0};
 
@@ -48,7 +48,7 @@ TEST(test_errorOnMissingOutput)
     VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_NO_OUTPUT);
 }
 
-TEST(test_errorOnMissingResolution)
+TEST(errorOnMissingResolution)
 {
     constexpr const float vertices[9]{0, 0, 0, 0, 0, 1, 1, 0, 0};
 
@@ -90,9 +90,18 @@ constexpr size_t unitCubeElements[6 * 4] {
 };
 // clang-format on
 
-TEST(test_unitCubeProducesExpectedVoxelCount)
+constexpr size_t expectedUnitCubeVoxels(size_t resolution)
+{
+    size_t expectedVertexVoxels = 8;
+    size_t expectedEdgeVoxels = 12 * (resolution - 2);
+    size_t expectedFaceVoxels = 6 * (resolution - 2) * (resolution - 2);
+    return expectedVertexVoxels + expectedEdgeVoxels + expectedFaceVoxels;
+}
+
+TEST(unitCubeProducesExpectedVoxelCount)
 {
     constexpr size_t resolution = 64;
+    constexpr size_t expectedVoxels = expectedUnitCubeVoxels(resolution);
 
     IndexedQuadInput input{unitCubeVertices, unitCubeElements, sizeof(unitCubeElements) / sizeof(size_t)};
 
@@ -116,13 +125,30 @@ TEST(test_unitCubeProducesExpectedVoxelCount)
     obj2voxel_free(instance);
 
     VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_OK);
-
-    constexpr size_t expectedVertexVoxels = 8;
-    constexpr size_t expectedEdgeVoxels = 12 * (resolution - 2);
-    constexpr size_t expectedFaceVoxels = 6 * (resolution - 2) * (resolution - 2);
-    constexpr size_t expectedVoxels = expectedVertexVoxels + expectedEdgeVoxels + expectedFaceVoxels;
-
     VXIO_ASSERT_EQ(output.voxelCount, expectedVoxels);
+}
+
+TEST(unitCubeProducesExpectedByteCount)
+{
+    constexpr size_t resolution = 64;
+    constexpr size_t expectedVoxels = expectedUnitCubeVoxels(resolution);
+    constexpr size_t expectedBytes = expectedVoxels * sizeof(uint32_t) * 4;
+
+    IndexedQuadInput input{unitCubeVertices, unitCubeElements, sizeof(unitCubeElements) / sizeof(size_t)};
+
+    obj2voxel_instance *instance = obj2voxel_alloc();
+    obj2voxel_set_input_callback(instance, &inputCallback<IndexedQuadInput>, &input);
+    obj2voxel_set_output_memory(instance, "vl32");
+    obj2voxel_set_resolution(instance, resolution);
+    obj2voxel_error_t result = obj2voxel_voxelize(instance);
+
+    VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_OK);
+
+    size_t size;
+    VXIO_ASSERT_NOTNULL(obj2voxel_get_output_memory(instance, &size));
+    obj2voxel_free(instance);
+
+    VXIO_ASSERT_EQ(size, expectedBytes);
 }
 
 // MAIN ================================================================================================================
