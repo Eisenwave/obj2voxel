@@ -382,6 +382,10 @@ struct CallbackVoxelSink final : public IVoxelSink {
     {
     }
 
+    const OutputStream* streamOrNull() const final {
+        return nullptr;
+    }
+
     bool canWrite() const noexcept final
     {
         return good;
@@ -433,6 +437,10 @@ public:
             finalize();
             VXIO_ASSERT(isGood(err));
         }
+    }
+
+    const OutputStream* streamOrNull() const final {
+        return stream.get();
     }
 
     bool canWrite() const noexcept final
