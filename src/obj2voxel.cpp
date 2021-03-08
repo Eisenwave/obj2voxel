@@ -72,9 +72,21 @@ public:
 
 // INSTANCE DEFINITION =================================================================================================
 
+enum class IoType {
+    MISSING,
+    FILE,
+    MEMORY_FILE,
+    CALLBACK
+};
+
 struct TypedFile {
     const char *path;
     voxelio::FileType type;
+
+    constexpr IoType ioType() const
+    {
+        return path == nullptr ? IoType::MEMORY_FILE : IoType::FILE;
+    }
 };
 
 template <typename Callback>
@@ -83,23 +95,26 @@ struct CallbackWithData {
     void *callbackData;
 };
 
+
+
 template <typename Callback>
 struct FileOrCallback {
-    bool isFile;
+    IoType type;
     union {
         TypedFile file;
         CallbackWithData<Callback> callback;
     };
 
-    FileOrCallback() : isFile{true}, file{nullptr, voxelio::FileType{0}} {}
 
-    FileOrCallback(TypedFile file) : isFile{true}, file{file} {}
+    FileOrCallback() : type{IoType::MISSING}, file{nullptr, voxelio::FileType{0}} {}
 
-    FileOrCallback(CallbackWithData<Callback> callback) : isFile{false}, callback{callback} {}
+    FileOrCallback(TypedFile file) : type{file.ioType()}, file{file} {}
+
+    FileOrCallback(CallbackWithData<Callback> callback) : type{IoType::CALLBACK}, callback{callback} {}
 
     bool isPresent() const
     {
-        return not isFile || file.path != nullptr;
+        return type != IoType::MISSING;
     }
 };
 
@@ -139,7 +154,7 @@ struct obj2voxel_instance {
     int unitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
 
     // initialized during voxelization
-    IVoxelSink *voxelSink = nullptr;
+    std::unique_ptr<IVoxelSink> voxelSink = nullptr;
     std::vector<CachedTriangle> triangles;
     std::unordered_map<uint64_t, std::vector<uint32_t>> chunks;
     uint32_t chunkCount = 0;
@@ -153,6 +168,7 @@ struct obj2voxel_instance {
     uint32_t workerCount = 0;
     bool workersStopped = false;
     bool sinkWritable = true;
+    bool done = false;
 };
 
 // ALGORITHM ===========================================================================================================
@@ -448,6 +464,7 @@ template <bool PARALLEL>
     VXIO_LOG(DEBUG, "Sorting triangles into chunks ...");
     const usize triangleCount = instance.triangles.size();
 
+    // FIXME don't just ignore user-configured mesh bounds if present
     for (u32 i = 0; i < triangleCount; i += BATCH_SIZE) {
         helper.findMeshBounds(i);
     }
@@ -494,12 +511,66 @@ template <bool PARALLEL>
     return OBJ2VOXEL_ERR_OK;
 }
 
-[[nodiscard]] obj2voxel_error_t voxelize(obj2voxel_instance &instance, ITriangleStream &stream, IVoxelSink &sink)
+std::unique_ptr<ITriangleStream> openInput(obj2voxel_instance &instance)
+{
+    FileOrCallback<obj2voxel_triangle_callback> &input = instance.input;
+
+    VXIO_ASSERT(input.isPresent());
+
+    switch (input.type) {
+    case IoType::CALLBACK: {
+        return ITriangleStream::fromCallback(input.callback.callback, input.callback.callbackData);
+    }
+    case IoType::FILE: {
+        switch (input.file.type) {
+        case FileType::WAVEFRONT_OBJ: return ITriangleStream::fromObjFile(input.file.path, instance.defaultTexture);
+        case FileType::STEREOLITHOGRAPHY: return ITriangleStream::fromStlFile(input.file.path);
+        default: return nullptr;
+        }
+    }
+    default: VXIO_ASSERT_UNREACHABLE();
+    }
+}
+
+std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
+{
+    FileOrCallback<obj2voxel_voxel_callback> &output = instance.output;
+
+    VXIO_ASSERT(output.isPresent());
+
+    switch (output.type) {
+    case IoType::MISSING: {
+        VXIO_ASSERT_UNREACHABLE();
+    }
+
+    case IoType::CALLBACK: {
+        return IVoxelSink::fromCallback(output.callback.callback, output.callback.callbackData);
+    }
+
+    case IoType::FILE: {
+        std::optional<FileOutputStream> stream = FileOutputStream::open(output.file.path, OpenMode::BINARY);
+        if (not stream.has_value()) {
+            return nullptr;
+        }
+
+        std::unique_ptr<OutputStream> streamPtr{new FileOutputStream{std::move(*stream)}};
+
+        return IVoxelSink::fromVoxelio(std::move(streamPtr), output.file.type, instance.outputResolution);
+    }
+
+    case IoType::MEMORY_FILE: {
+        std::unique_ptr<ByteArrayOutputStream> streamPtr{new ByteArrayOutputStream};
+
+        return IVoxelSink::fromVoxelio(std::move(streamPtr), output.file.type, instance.outputResolution);
+    }
+    }
+    VXIO_ASSERT_UNREACHABLE();
+}
+
+[[nodiscard]] obj2voxel_error_t voxelize(obj2voxel_instance &instance, ITriangleStream &stream)
 {
     u32 chunkCountCbrt = divCeil(instance.sampleResolution, CHUNK_SIZE);
     instance.chunkCount = chunkCountCbrt * chunkCountCbrt * chunkCountCbrt;
-
-    instance.voxelSink = &sink;
 
     VXIO_LOG(DEBUG, "Caching triangles ...");
 
@@ -510,55 +581,21 @@ template <bool PARALLEL>
 
     if (instance.triangles.empty()) {
         VXIO_LOG(WARNING, "Model has no triangles, aborting and writing empty voxel model");
-        sink.finalize();
-        return sink.canWrite() ? OBJ2VOXEL_ERR_OK : OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE;
+        instance.voxelSink->finalize();
+        return instance.voxelSink->canWrite() ? OBJ2VOXEL_ERR_OK : OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE;
     }
-    VXIO_LOG(INFO, "Cached model with " + stringifyLargeInt(instance.triangles.size()) + " triangles");
+    else {
+        VXIO_LOG(INFO, "Cached model with " + stringifyLargeInt(instance.triangles.size()) + " triangles");
 
-    return instance.parallel ? voxelize_specialized<true>(instance) : voxelize_specialized<false>(instance);
-}
-
-std::unique_ptr<ITriangleStream> openInput(obj2voxel_instance &instance)
-{
-    FileOrCallback<obj2voxel_triangle_callback> &input = instance.input;
-
-    VXIO_ASSERT(input.isPresent());
-
-    if (not input.isFile) {
-        return ITriangleStream::fromCallback(input.callback.callback, input.callback.callbackData);
-    }
-
-    switch (input.file.type) {
-    case FileType::WAVEFRONT_OBJ: {
-        return ITriangleStream::fromObjFile(input.file.path, instance.defaultTexture);
-    }
-    case FileType::STEREOLITHOGRAPHY: return ITriangleStream::fromStlFile(input.file.path);
-    default: return nullptr;
+        return instance.parallel ? voxelize_specialized<true>(instance) : voxelize_specialized<false>(instance);
     }
 }
 
-std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
+[[nodiscard]] obj2voxel_error_t voxelize(obj2voxel_instance &instance)
 {
-    FileOrCallback<obj2voxel_voxel_callback> &output = instance.output;
-
-    VXIO_ASSERT(output.isPresent());
-
-    if (not output.isFile) {
-        return IVoxelSink::fromCallback(output.callback.callback, output.callback.callbackData);
+    if (instance.done) {
+        return OBJ2VOXEL_ERR_DOUBLE_VOXELIZATION;
     }
-
-    std::optional<FileOutputStream> stream = FileOutputStream::open(output.file.path, OpenMode::BINARY);
-    if (not stream.has_value()) {
-        return nullptr;
-    }
-
-    std::unique_ptr<OutputStream> streamPtr{new FileOutputStream{std::move(*stream)}};
-
-    return IVoxelSink::fromVoxelio(std::move(streamPtr), output.file.type, instance.outputResolution);
-}
-
-obj2voxel_error_t voxelize(obj2voxel_instance &instance)
-{
     if (not instance.input.isPresent()) {
         VXIO_LOG(ERROR, "No input was specified");
         return OBJ2VOXEL_ERR_NO_INPUT;
@@ -577,12 +614,18 @@ obj2voxel_error_t voxelize(obj2voxel_instance &instance)
         return OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE;
     }
 
-    std::unique_ptr<IVoxelSink> output = openOutput(instance);
-    if (output == nullptr) {
+    instance.voxelSink = openOutput(instance);
+    if (instance.voxelSink == nullptr) {
         return OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE;
     }
 
-    return voxelize(instance, *input, *output);
+    obj2voxel_error_t result = voxelize(instance, *input);
+    if (instance.output.type != IoType::MEMORY_FILE) {
+        instance.voxelSink.reset();
+    }
+
+    instance.done = true;
+    return result;
 }
 
 static obj2voxel_log_callback logCallback = nullptr;
@@ -684,6 +727,33 @@ void obj2voxel_set_output_file(obj2voxel_instance *instance, const char *file, c
     VXIO_ASSERT_NOTNULL(file);
 
     instance->output = TypedFile{file, detectFileType(file, type)};
+}
+
+void obj2voxel_set_output_memory(obj2voxel_instance *instance, const char *type)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERT_NOTNULL(type);
+
+    instance->output = TypedFile{nullptr, detectFileType(nullptr, type)};
+}
+
+const obj2voxel_byte_t* obj2voxel_get_output_memory(obj2voxel_instance *instance,  size_t *out_size)
+{
+    static_assert (std::is_same_v<obj2voxel_byte_t, u8>);
+
+    VXIO_ASSERT_NOTNULL(instance);
+    VXIO_ASSERTM(instance->voxelSink != nullptr, "Accessing output memory before voxelization");
+
+    if (instance->output.type != IoType::MEMORY_FILE) {
+        return nullptr;
+    }
+    const OutputStream* stream = instance->voxelSink->streamOrNull();
+    VXIO_ASSERT_NOTNULL(stream);
+
+    // this downcast is safe because memory files always use ByteArrayOutputStream
+    const ByteArrayOutputStream *byteStream = downcast<const ByteArrayOutputStream*>(stream);
+    *out_size = byteStream->size();
+    return byteStream->data();
 }
 
 void obj2voxel_set_output_callback(obj2voxel_instance *instance, obj2voxel_voxel_callback callback, void *callback_data)
