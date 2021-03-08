@@ -382,7 +382,8 @@ struct CallbackVoxelSink final : public IVoxelSink {
     {
     }
 
-    const OutputStream* streamOrNull() const final {
+    const OutputStream *streamOrNull() const final
+    {
         return nullptr;
     }
 
@@ -439,7 +440,8 @@ public:
         }
     }
 
-    const OutputStream* streamOrNull() const final {
+    const OutputStream *streamOrNull() const final
+    {
         return stream.get();
     }
 

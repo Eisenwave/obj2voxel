@@ -66,7 +66,7 @@ struct IVoxelSink {
     virtual ~IVoxelSink() noexcept;
 
     /// Returns the underlying output strum or nullptr if the sink is streamless.
-    virtual const OutputStream* streamOrNull() const = 0;
+    virtual const OutputStream *streamOrNull() const = 0;
 
     /// Returns true if the writer has not encountered any errors yet and the sink can take more voxels.
     virtual bool canWrite() const noexcept = 0;

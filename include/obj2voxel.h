@@ -242,7 +242,7 @@ void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, const float bou
  * @param out_size the memory size output parameter
  * @return the pointer to the output memory or nullptr if the output is not a memory output
  */
-const obj2voxel_byte_t* obj2voxel_get_output_memory(obj2voxel_instance *instance,  size_t *out_size);
+const obj2voxel_byte_t *obj2voxel_get_output_memory(obj2voxel_instance *instance, size_t *out_size);
 
 // TRIANGLES ===========================================================================================================
 

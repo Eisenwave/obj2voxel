@@ -72,12 +72,7 @@ public:
 
 // INSTANCE DEFINITION =================================================================================================
 
-enum class IoType {
-    MISSING,
-    FILE,
-    MEMORY_FILE,
-    CALLBACK
-};
+enum class IoType { MISSING, FILE, MEMORY_FILE, CALLBACK };
 
 struct TypedFile {
     const char *path;
@@ -95,8 +90,6 @@ struct CallbackWithData {
     void *callbackData;
 };
 
-
-
 template <typename Callback>
 struct FileOrCallback {
     IoType type;
@@ -104,7 +97,6 @@ struct FileOrCallback {
         TypedFile file;
         CallbackWithData<Callback> callback;
     };
-
 
     FileOrCallback() : type{IoType::MISSING}, file{nullptr, voxelio::FileType{0}} {}
 
@@ -737,9 +729,9 @@ void obj2voxel_set_output_memory(obj2voxel_instance *instance, const char *type)
     instance->output = TypedFile{nullptr, detectFileType(nullptr, type)};
 }
 
-const obj2voxel_byte_t* obj2voxel_get_output_memory(obj2voxel_instance *instance,  size_t *out_size)
+const obj2voxel_byte_t *obj2voxel_get_output_memory(obj2voxel_instance *instance, size_t *out_size)
 {
-    static_assert (std::is_same_v<obj2voxel_byte_t, u8>);
+    static_assert(std::is_same_v<obj2voxel_byte_t, u8>);
 
     VXIO_ASSERT_NOTNULL(instance);
     VXIO_ASSERTM(instance->voxelSink != nullptr, "Accessing output memory before voxelization");
@@ -747,11 +739,11 @@ const obj2voxel_byte_t* obj2voxel_get_output_memory(obj2voxel_instance *instance
     if (instance->output.type != IoType::MEMORY_FILE) {
         return nullptr;
     }
-    const OutputStream* stream = instance->voxelSink->streamOrNull();
+    const OutputStream *stream = instance->voxelSink->streamOrNull();
     VXIO_ASSERT_NOTNULL(stream);
 
     // this downcast is safe because memory files always use ByteArrayOutputStream
-    const ByteArrayOutputStream *byteStream = downcast<const ByteArrayOutputStream*>(stream);
+    const ByteArrayOutputStream *byteStream = downcast<const ByteArrayOutputStream *>(stream);
     *out_size = byteStream->size();
     return byteStream->data();
 }
