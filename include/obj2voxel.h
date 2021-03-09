@@ -104,12 +104,6 @@ void obj2voxel_free(obj2voxel_instance *instance);
 void obj2voxel_set_log_level(obj2voxel_enum_t level);
 
 /**
- * @brief Returns the current log level.
- * @return the current log level
- */
-obj2voxel_enum_t obj2voxel_get_log_level(void);
-
-/**
  * @brief Sets a custom callback for log messages.
  * By default, log messages simply get printed to stdout.
  * To avoid this and handle potential warnings and errors, a custom callback can be specified.
@@ -117,6 +111,12 @@ obj2voxel_enum_t obj2voxel_get_log_level(void);
  * @param callback_data the data passed to the callback each invocation
  */
 void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data);
+
+/**
+ * @brief Returns the current log level.
+ * @return the current log level
+ */
+obj2voxel_enum_t obj2voxel_get_log_level(void);
 
 // SETTINGS ============================================================================================================
 
