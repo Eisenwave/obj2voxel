@@ -10,7 +10,60 @@ std::vector<NamedTest> tests;
 
 namespace {
 
+// clang-format off
+constexpr std::array<float, 9> triangleVertices{
+    0, 0, 0,
+    0, 0, 1,
+    1, 0, 0
+};
+
+constexpr std::array<float, 8 * 3> unitCubeVertices{
+    0, 0, 0,
+    0, 0, 1,
+    0, 1, 0,
+    0, 1, 1,
+    1, 0, 0,
+    1, 0, 1,
+    1, 1, 0,
+    1, 1, 1
+};
+
+constexpr std::array<size_t, 6 * 4> unitCubeElements{
+    0, 1, 3, 2,
+    4, 6, 7, 5,
+    0, 4, 5, 1,
+    2, 3, 7, 6,
+    0, 2, 6, 4,
+    1, 5, 7, 3
+};
+
+constexpr std::array<float, 3 * 4 * 3> threePlanesVertices{
+    .0, 0, 0,
+    .0, 0, 1,
+    .0, 1, 1,
+    .0, 1, 0,
+
+    .5, 0, 0,
+    .5, 0, 1,
+    .5, 1, 1,
+    .5, 1, 0,
+
+    1., 0, 0,
+    1., 0, 1,
+    1., 1, 1,
+    1., 1, 0,
+};
+
+constexpr std::array<size_t, 3 * 4> threePlanesElements{
+    0, 1, 2, 3,
+    4, 5, 6, 7,
+    8, 9, 10, 11
+};
+// clang-format on
+
 // TESTS ===============================================================================================================
+
+//#define DUMP_OUTPUTS
 
 TEST(errorOnMissingInput)
 {
@@ -31,11 +84,9 @@ TEST(errorOnMissingInput)
 
 TEST(errorOnMissingOutput)
 {
-    constexpr const float vertices[9]{0, 0, 0, 0, 0, 1, 1, 0, 0};
-
     pushLogLevel(OBJ2VOXEL_LOG_LEVEL_SILENT);
 
-    TriangleInput input{vertices, 3};
+    TriangleInput input{triangleVertices.data(), 3};
 
     obj2voxel_instance *instance = obj2voxel_alloc();
     obj2voxel_set_input_callback(instance, &inputCallback<TriangleInput>, &input);
@@ -50,11 +101,9 @@ TEST(errorOnMissingOutput)
 
 TEST(errorOnMissingResolution)
 {
-    constexpr const float vertices[9]{0, 0, 0, 0, 0, 1, 1, 0, 0};
-
     pushLogLevel(OBJ2VOXEL_LOG_LEVEL_SILENT);
 
-    TriangleInput input{vertices, 3};
+    TriangleInput input{triangleVertices.data(), 3};
     CountingOutput output;
 
     obj2voxel_instance *instance = obj2voxel_alloc();
@@ -67,28 +116,6 @@ TEST(errorOnMissingResolution)
 
     VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_NO_RESOLUTION);
 }
-
-// clang-format off
-constexpr float unitCubeVertices[8 * 3] {
-    0, 0, 0,
-    0, 0, 1,
-    0, 1, 0,
-    0, 1, 1,
-    1, 0, 0,
-    1, 0, 1,
-    1, 1, 0,
-    1, 1, 1
-};
-
-constexpr size_t unitCubeElements[6 * 4] {
-    0, 1, 3, 2,
-    4, 6, 7, 5,
-    0, 4, 5, 1,
-    2, 3, 7, 6,
-    0, 2, 6, 4,
-    1, 5, 7, 3
-};
-// clang-format on
 
 constexpr size_t expectedUnitCubeVoxels(size_t resolution)
 {
@@ -103,7 +130,7 @@ TEST(unitCubeProducesExpectedVoxelCount)
     constexpr size_t resolution = 64;
     constexpr size_t expectedVoxels = expectedUnitCubeVoxels(resolution);
 
-    IndexedQuadInput input{unitCubeVertices, unitCubeElements, sizeof(unitCubeElements) / sizeof(size_t)};
+    IndexedQuadInput input{unitCubeVertices.data(), unitCubeElements.data(), unitCubeElements.size()};
 
     obj2voxel_instance *instance = obj2voxel_alloc();
 
@@ -134,7 +161,7 @@ TEST(unitCubeProducesExpectedByteCount)
     constexpr size_t expectedVoxels = expectedUnitCubeVoxels(resolution);
     constexpr size_t expectedBytes = expectedVoxels * sizeof(uint32_t) * 4;
 
-    IndexedQuadInput input{unitCubeVertices, unitCubeElements, sizeof(unitCubeElements) / sizeof(size_t)};
+    IndexedQuadInput input{unitCubeVertices.data(), unitCubeElements.data(), unitCubeElements.size()};
 
     obj2voxel_instance *instance = obj2voxel_alloc();
     obj2voxel_set_input_callback(instance, &inputCallback<IndexedQuadInput>, &input);
@@ -151,18 +178,92 @@ TEST(unitCubeProducesExpectedByteCount)
     VXIO_ASSERT_EQ(size, expectedBytes);
 }
 
+void testVoxelProduction(obj2voxel_instance *instance, size_t expectedVoxels)
+{
+    CountingOutput output;
+    obj2voxel_set_output_callback(instance, &outputCallback<CountingOutput>, &output);
+
+    obj2voxel_error_t result = obj2voxel_voxelize(instance);
+    VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_OK);
+
+    obj2voxel_free(instance);
+
+    VXIO_ASSERT_EQ(output.voxelCount, expectedVoxels);
+}
+
+TEST(unitCubeProducesExpectedVoxelCountForMultipleChunks)
+{
+    IndexedQuadInput input{unitCubeVertices.data(), unitCubeElements.data(), unitCubeElements.size()};
+
+    obj2voxel_instance *instance = obj2voxel_alloc();
+    obj2voxel_set_input_callback(instance, &inputCallback<IndexedQuadInput>, &input);
+
+    const uint32_t resolution = obj2voxel_get_chunk_size(instance) * 2;
+    const size_t expectedVoxels = expectedUnitCubeVoxels(resolution);
+
+    obj2voxel_set_resolution(instance, resolution);
+    VXIO_ASSERT_EQ(resolution, obj2voxel_get_resolution(instance));
+
+    testVoxelProduction(instance, expectedVoxels);
+}
+
+#ifdef DUMP_OUTPUTS
+TEST(dumpThreePlanes)
+{
+    IndexedQuadInput input{threePlanesVertices.data(), threePlanesElements.data(), threePlanesElements.size()};
+
+    obj2voxel_instance *instance = obj2voxel_alloc();
+    obj2voxel_set_input_callback(instance, &inputCallback<IndexedQuadInput>, &input);
+    obj2voxel_set_output_file(instance, "/tmp/three_planes.vl32", nullptr);
+    obj2voxel_set_resolution(instance, obj2voxel_get_chunk_size(instance) * 2);
+    obj2voxel_error_t result = obj2voxel_voxelize(instance);
+    VXIO_ASSERT_EQ(result, OBJ2VOXEL_ERR_OK);
+    obj2voxel_free(instance);
+}
+#endif
+
+TEST(threePlanesProduceExpectedVoxelCount)
+{
+    constexpr size_t resolution = 32;
+    constexpr size_t expectedVoxels = resolution * resolution * 3;
+
+    IndexedQuadInput input{threePlanesVertices.data(), threePlanesElements.data(), threePlanesElements.size()};
+
+    obj2voxel_instance *instance = obj2voxel_alloc();
+    obj2voxel_set_input_callback(instance, &inputCallback<IndexedQuadInput>, &input);
+    obj2voxel_set_resolution(instance, resolution);
+
+    testVoxelProduction(instance, expectedVoxels);
+}
+
+TEST(threePlanesProduceExpectedVoxelCountForMultipleChunks)
+{
+    IndexedQuadInput input{threePlanesVertices.data(), threePlanesElements.data(), threePlanesElements.size()};
+
+    obj2voxel_instance *instance = obj2voxel_alloc();
+    obj2voxel_set_input_callback(instance, &inputCallback<IndexedQuadInput>, &input);
+
+    const uint32_t resolution = obj2voxel_get_chunk_size(instance) * 2;
+    const size_t expectedVoxels = resolution * resolution * 3;
+
+    obj2voxel_set_resolution(instance, resolution);
+
+    testVoxelProduction(instance, expectedVoxels);
+}
+
 // MAIN ================================================================================================================
 
 }  // namespace
 
 int main()
 {
-    obj2voxel_set_log_level(OBJ2VOXEL_LOG_LEVEL_DEBUG);
+    voxelio::setLogLevel(voxelio::LogLevel::DEBUG);
+    voxelio::enableLoggingSourceLocation(voxelio::build::DEBUG);
 
     VXIO_LOG(INFO, "Running " + voxelio::stringify(tests.size()) + " tests ...");
 
     for (NamedTest test : tests) {
-        VXIO_LOG(INFO, "Running \"" + std::string{test.name} + "\" ...");
+        VXIO_LOG(IMPORTANT, "Running \"" + std::string{test.name} + "\" ...");
         test.test();
     }
 
@@ -170,6 +271,6 @@ int main()
     VXIO_ASSERT_EQ(logLevelStack.size(), 0);
 #endif
 
-    VXIO_LOG(INFO, "All tests passed");
+    VXIO_LOG(IMPORTANT, "All tests passed");
     return 0;
 }
