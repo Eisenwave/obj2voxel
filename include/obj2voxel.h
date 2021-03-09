@@ -236,6 +236,23 @@ void obj2voxel_set_unit_transform(obj2voxel_instance *instance, const int transf
 void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, const float bounds[6]);
 
 /**
+ * @brief Returns the resolution configured by obj2voxel_set_resolution().
+ * Returns zero if no resolution has been set yet.
+ * @param instance the instance
+ * @return the resolution of the instance or zero
+ */
+uint32_t obj2voxel_get_resolution(obj2voxel_instance *instance);
+
+/**
+ * @brief Returns the chunk size of the instance.
+ * Voxelization happens in C*C*C blocks where C is the chunk size.
+ * Chunks are laid out in a regular grid with the origin chunk containing the coordinate range [0, C) on all axes.
+ * @param instance the instance
+ * @return the chunk size of the instance
+ */
+uint32_t obj2voxel_get_chunk_size(obj2voxel_instance *instance);
+
+/**
  * @brief After voxelization, returns a pointer to the memory written by voxelization.
  * If the output was not set using obj2voxel_set_output_memory, nullptr is returned and out_size remains unchanged.
  * @param instance the instance

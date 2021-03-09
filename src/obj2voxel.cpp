@@ -377,11 +377,18 @@ AffineTransform computeMeshTransform(obj2voxel_instance &instance)
     // range transform to voxel grid [a/2, t-a/2]
     result = AffineTransform{sampleScale / 2, Vec3::filledWith(ANTI_BLEED / 2)} * result;
 
-    for (usize i = 0; i < 3; ++i) {
-        VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + result.matrix[i].toString());
+    if (result.isUniformScale()) {
+        VXIO_LOG(DEBUG,
+                 "Mesh transform = uniform scale (" + stringify(result.matrix[0][0]) + ") + translation " +
+                     result.translation.toString());
+    }
+    else {
+        for (usize i = 0; i < 3; ++i) {
+            VXIO_LOG(DEBUG, "Mesh transform [" + stringify(i) + "] = " + result.matrix[i].toString());
+        }
+        VXIO_LOG(DEBUG, "Mesh translation = " + result.translation.toString());
     }
 
-    VXIO_LOG(DEBUG, "Mesh translation = " + result.translation.toString());
     return result;
 }
 
@@ -727,6 +734,20 @@ void obj2voxel_set_output_memory(obj2voxel_instance *instance, const char *type)
     VXIO_ASSERT_NOTNULL(type);
 
     instance->output = TypedFile{nullptr, detectFileType(nullptr, type)};
+}
+
+uint32_t obj2voxel_get_resolution(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+
+    return instance->outputResolution;
+}
+
+uint32_t obj2voxel_get_chunk_size(obj2voxel_instance *instance)
+{
+    VXIO_ASSERT_NOTNULL(instance);
+
+    return CHUNK_SIZE;
 }
 
 const obj2voxel_byte_t *obj2voxel_get_output_memory(obj2voxel_instance *instance, size_t *out_size)
