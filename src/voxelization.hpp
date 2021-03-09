@@ -98,7 +98,7 @@ private:
      */
     void voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept;
 
-    void consumeUvBuffer(const VisualTriangle &inputTriangle) noexcept;
+    void insertUvBufferIntoVoxels(const VisualTriangle &inputTriangle) noexcept;
 };
 
 }  // namespace obj2voxel

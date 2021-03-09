@@ -18,7 +18,7 @@ constexpr real_type EPSILON = real_type(1) / (1 << 16);
 
 inline bool isZero(real_type x)
 {
-    return std::abs(x) < EPSILON;
+    return std::fabs(x) < EPSILON;
 }
 
 inline bool eq(real_type x, u32 plane)
@@ -115,17 +115,31 @@ struct LoHiPusher {
     }
 };
 
-struct SplittingValues {
-    u32 plane = 0;
+constexpr bool IS_LO_BIASED = false;
 
+struct SplittingValues {
+    u32 plane;
     u8 axis;
+
     u8 loSum = 0;
     u8 planarSum = 0;
-    u8 padding;
 
-    // there are only three vertices, the last bool is padding
+    // there are only three vertices, the last bool is padding and remains uninitialized
     bool loVertices[4];
     bool planarVertices[4];
+
+    SplittingValues(u32 plane, u8 axis, const Triangle &triangle) : plane{plane}, axis{axis}
+    {
+        for (unsigned i = 0; i < 3; ++i) {
+            planarVertices[i] = eq(triangle.vertex(i)[axis], plane);
+
+            const real_type v = triangle.vertex(i)[axis];
+            loVertices[i] = IS_LO_BIASED ? (v <= real_type(plane)) : (v < real_type(plane));
+
+            planarSum += planarVertices[i];
+            loSum += loVertices[i];
+        }
+    }
 
     u8 firstLo() const
     {
@@ -147,11 +161,6 @@ struct SplittingValues {
         return not planarVertices[0] ? 0 : not planarVertices[1] ? 1 : 2;
     }
 };
-
-template <DiscardMode DISCARD_MODE>
-void splitTriangle_decideCase(const TexturedTriangle &t,
-                              SplittingValues val,
-                              LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
 
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_onePlanarCase(const TexturedTriangle &t,
@@ -180,26 +189,11 @@ void splitTriangle(const u32 axis,
                    std::vector<TexturedTriangle> &outLo,
                    std::vector<TexturedTriangle> &outHi)
 {
-    SplittingValues val;
-    val.axis = static_cast<u8>(axis);
-    val.plane = plane;
+    VXIO_DEBUG_ASSERT_LT(axis, 3);
 
-    for (unsigned i = 0; i < 3; ++i) {
-        val.planarVertices[i] = eq(t.vertex(i)[axis], plane);
-        val.loVertices[i] = t.vertex(i)[axis] <= real_type(plane);
+    const SplittingValues val{plane, static_cast<u8>(axis), t};
+    const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi{outLo, outHi};
 
-        val.planarSum += val.planarVertices[i];
-        val.loSum += val.loVertices[i];
-    }
-
-    return splitTriangle_decideCase<DISCARD_MODE>(t, val, {outLo, outHi});
-}
-
-template <DiscardMode DISCARD_MODE>
-void splitTriangle_decideCase(const TexturedTriangle &t,
-                              const SplittingValues val,
-                              const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
-{
     // clang tends to mess up curly brackets and indentation in this function
     // clang-format off
 #define OBJ2VOXEL_LO_AND_PLANAR(lo, planar) static_cast<u8>(planar << 2u) | lo
@@ -221,10 +215,10 @@ void splitTriangle_decideCase(const TexturedTriangle &t,
         return pushLoIfTrueElseHi(t, true);
 
     // Special case: Triangle is parallel to the splitting plane (except if all vertices are hi or lo)
-    //               We are biased towards lo, so we push into lo.
+    //               We push based on our bias.
     case OBJ2VOXEL_LO_AND_PLANAR(1, 3):
     case OBJ2VOXEL_LO_AND_PLANAR(2, 3):
-        return pushLoIfTrueElseHi(t, true);
+        return pushLoIfTrueElseHi(t, IS_LO_BIASED);
 
     // Special case: Two vertices are on the splitting plane, meaning the triangle can't be split
     //               We must still make a decision whether to put it into outLo or outHi
@@ -247,7 +241,7 @@ void splitTriangle_decideCase(const TexturedTriangle &t,
         return splitTriangle_regularCase(t, val, pushLoIfTrueElseHi);
     }
 
-    }
+    } // switch
 
     VXIO_DEBUG_ASSERT_UNREACHABLE();
     // clang-format on
@@ -503,7 +497,7 @@ void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 ma
     VXIO_ASSERT(uvBuffer.empty());
 
     voxelizeTriangleToUvBuffer(triangle, min, max);
-    consumeUvBuffer(triangle);
+    insertUvBufferIntoVoxels(triangle);
 }
 
 void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept
@@ -528,7 +522,7 @@ void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, 
     }
 }
 
-void Voxelizer::consumeUvBuffer(const VisualTriangle &inputTriangle) noexcept
+void Voxelizer::insertUvBufferIntoVoxels(const VisualTriangle &inputTriangle) noexcept
 {
     for (auto &[index, weightedUv] : uvBuffer) {
         Vec3u32 pos = uvBuffer.posOf(index);
