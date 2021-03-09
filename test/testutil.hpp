@@ -76,6 +76,7 @@ struct IndexedPrimitiveInput {
     IndexedPrimitiveInput(const float *vertices, const size_t *elements, size_t elementCount)
         : vertices{vertices}, elements{elements}, elementCount{elementCount}
     {
+        VXIO_ASSERT_EQ(elementCount % PRIM_VERTICES, 0);
     }
 
     bool next(obj2voxel_triangle *triangle)
@@ -125,6 +126,21 @@ struct CountingOutput {
     bool write(uint32_t *, size_t voxelCount)
     {
         this->voxelCount += voxelCount;
+        return true;
+    }
+};
+
+struct HistogramOutput {
+    std::unordered_map<uint32_t, uint32_t> histogram;
+    size_t voxelCount = 0;
+
+    bool write(uint32_t *voxels, size_t voxelCount)
+    {
+        this->voxelCount += voxelCount;
+        for (size_t i = 0; i < voxelCount; ++i) {
+            uint32_t color = voxels[i * 4 + 3];
+            ++histogram[color];
+        }
         return true;
     }
 };
