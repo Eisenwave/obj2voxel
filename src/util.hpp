@@ -231,6 +231,26 @@ struct AffineTransform {
     {
     }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wfloat-equal"
+    constexpr bool isScale() const
+    {
+        for (usize i = 0; i < 3; ++i) {
+            for (usize j = 0; j < 3; ++j) {
+                if ((matrix[i][j] != 0) != (i == j)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    constexpr bool isUniformScale() const
+    {
+        return isScale() && matrix[0][0] == matrix[1][1] && matrix[0][0] == matrix[2][2];
+    }
+#pragma clang diagnostic pop
+
     constexpr vec_type row(usize i) const
     {
         return matrix[i];
