@@ -29,13 +29,13 @@ typedef struct obj2voxel_triangle obj2voxel_triangle;
 
 /// A callback which iterates over a sequence of triangles.
 /// Returns true if loading a triangle succeeded.
-typedef bool (*obj2voxel_triangle_callback)(void *callback_data, obj2voxel_triangle *out_triangle);
+typedef bool(obj2voxel_triangle_callback)(void *callback_data, obj2voxel_triangle *out_triangle);
 /// A callback which writes voxels to an output.
 /// Returns true if writing voxels succeeded.
-typedef bool (*obj2voxel_voxel_callback)(void *callback_data, uint32_t *voxel_data, size_t voxel_count);
+typedef bool(obj2voxel_voxel_callback)(void *callback_data, uint32_t *voxel_data, size_t voxel_count);
 /// A callback which handles log messages.
 /// Returns true if the message was handled or false if it should be default-logged.
-typedef bool (*obj2voxel_log_callback)(void *callback_data, const char *msg, obj2voxel_enum_t level);
+typedef bool(obj2voxel_log_callback)(void *callback_data, const char *msg, obj2voxel_enum_t level);
 
 // ENUMS ===============================================================================================================
 
@@ -110,7 +110,7 @@ void obj2voxel_set_log_level(obj2voxel_enum_t level);
  * @param callback the callback or nullptr if the behavior should be reset to printing to stdout
  * @param callback_data the data passed to the callback each invocation
  */
-void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data);
+void obj2voxel_set_log_callback(obj2voxel_log_callback *callback, void *callback_data);
 
 /**
  * @brief Returns the current log level.
@@ -174,7 +174,7 @@ void obj2voxel_set_input_file(obj2voxel_instance *instance, const char *file, co
  * @param callback_data data passed to the callback each invocation
  */
 void obj2voxel_set_input_callback(obj2voxel_instance *instance,
-                                  obj2voxel_triangle_callback callback,
+                                  obj2voxel_triangle_callback *callback,
                                   void *callback_data);
 
 /**
@@ -204,7 +204,7 @@ void obj2voxel_set_output_memory(obj2voxel_instance *instance, const char *type)
  * @param callback_data data passed to the callback each invocation
  */
 void obj2voxel_set_output_callback(obj2voxel_instance *instance,
-                                   obj2voxel_voxel_callback callback,
+                                   obj2voxel_voxel_callback *callback,
                                    void *callback_data);
 
 /**

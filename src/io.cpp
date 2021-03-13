@@ -63,10 +63,10 @@ ITriangleStream::~ITriangleStream() noexcept = default;
 namespace {
 
 struct CallbackTriangleStream final : public ITriangleStream {
-    obj2voxel_triangle_callback callback;
+    obj2voxel_triangle_callback *callback;
     void *callbackData;
 
-    CallbackTriangleStream(obj2voxel_triangle_callback callback, void *callbackData = nullptr)
+    CallbackTriangleStream(obj2voxel_triangle_callback *callback, void *callbackData = nullptr)
         : callback{callback}, callbackData{callbackData}
     {
     }
@@ -371,13 +371,13 @@ AbstractListWriter *makeWriter(OutputStream &stream, FileType type)
 }
 
 struct CallbackVoxelSink final : public IVoxelSink {
-    obj2voxel_voxel_callback callback;
+    obj2voxel_voxel_callback *callback;
     void *callbackData;
 
     usize voxelCount = 0;
     bool good = true;
 
-    CallbackVoxelSink(obj2voxel_voxel_callback callback, void *callbackData = nullptr)
+    CallbackVoxelSink(obj2voxel_voxel_callback *callback, void *callbackData = nullptr)
         : callback{callback}, callbackData{callbackData}
     {
     }
@@ -547,7 +547,7 @@ void CallbackVoxelSink::write(Voxel32 voxels[], usize count) noexcept
 
 }  // namespace
 
-std::unique_ptr<IVoxelSink> IVoxelSink::fromCallback(obj2voxel_voxel_callback callback, void *callbackData) noexcept
+std::unique_ptr<IVoxelSink> IVoxelSink::fromCallback(obj2voxel_voxel_callback *callback, void *callbackData) noexcept
 {
     return std::unique_ptr<IVoxelSink>{new CallbackVoxelSink{callback, callbackData}};
 }

@@ -86,8 +86,8 @@ struct TypedFile {
 
 template <typename Callback>
 struct CallbackWithData {
-    Callback callback;
-    void *callbackData;
+    Callback *callback;
+    void *data;
 };
 
 template <typename Callback>
@@ -95,14 +95,14 @@ struct FileOrCallback {
     IoType type;
     union {
         TypedFile file;
-        CallbackWithData<Callback> callback;
+        CallbackWithData<Callback> callbackWithData;
     };
 
     FileOrCallback() : type{IoType::MISSING}, file{nullptr, voxelio::FileType{0}} {}
 
     FileOrCallback(TypedFile file) : type{file.ioType()}, file{file} {}
 
-    FileOrCallback(CallbackWithData<Callback> callback) : type{IoType::CALLBACK}, callback{callback} {}
+    FileOrCallback(CallbackWithData<Callback> callback) : type{IoType::CALLBACK}, callbackWithData{callback} {}
 
     bool isPresent() const
     {
@@ -518,7 +518,7 @@ std::unique_ptr<ITriangleStream> openInput(obj2voxel_instance &instance)
 
     switch (input.type) {
     case IoType::CALLBACK: {
-        return ITriangleStream::fromCallback(input.callback.callback, input.callback.callbackData);
+        return ITriangleStream::fromCallback(input.callbackWithData.callback, input.callbackWithData.data);
     }
     case IoType::FILE: {
         switch (input.file.type) {
@@ -543,7 +543,7 @@ std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
     }
 
     case IoType::CALLBACK: {
-        return IVoxelSink::fromCallback(output.callback.callback, output.callback.callbackData);
+        return IVoxelSink::fromCallback(output.callbackWithData.callback, output.callbackWithData.data);
     }
 
     case IoType::FILE: {
@@ -627,7 +627,7 @@ std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
     return result;
 }
 
-static obj2voxel_log_callback logCallback = nullptr;
+static obj2voxel_log_callback *logCallback = nullptr;
 static void *logCallbackData = nullptr;
 
 }  // namespace
@@ -656,7 +656,7 @@ obj2voxel_enum_t obj2voxel_get_log_level()
     return obj2voxelLogLevelOf(voxelio::getLogLevel());
 }
 
-void obj2voxel_set_log_callback(obj2voxel_log_callback callback, void *callback_data)
+void obj2voxel_set_log_callback(obj2voxel_log_callback *callback, void *callback_data)
 {
     if (callback == nullptr) {
         voxelio::setLogFormatter(nullptr);
@@ -711,7 +711,7 @@ void obj2voxel_set_input_file(obj2voxel_instance *instance, const char *file, co
 }
 
 void obj2voxel_set_input_callback(obj2voxel_instance *instance,
-                                  obj2voxel_triangle_callback callback,
+                                  obj2voxel_triangle_callback *callback,
                                   void *callback_data)
 {
     VXIO_ASSERT_NOTNULL(instance);
@@ -769,7 +769,9 @@ const obj2voxel_byte_t *obj2voxel_get_output_memory(obj2voxel_instance *instance
     return byteStream->data();
 }
 
-void obj2voxel_set_output_callback(obj2voxel_instance *instance, obj2voxel_voxel_callback callback, void *callback_data)
+void obj2voxel_set_output_callback(obj2voxel_instance *instance,
+                                   obj2voxel_voxel_callback *callback,
+                                   void *callback_data)
 {
     VXIO_ASSERT_NOTNULL(instance);
     VXIO_ASSERT_NOTNULL(callback);
