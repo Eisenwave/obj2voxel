@@ -21,6 +21,16 @@ namespace obj2voxel {
 using namespace voxelio;
 using real_type = tinyobj::real_t;
 
+/// Returns true if two floating point numbers are exactly equal without warnings (-Wfloat-equal).
+template <typename Float>
+constexpr bool eqExactly(Float a, Float b)
+{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wfloat-equal"
+    return a == b;
+#pragma clang diagnostic pop
+}
+
 // VEC UTILITY FUNCTIONS ===============================================================================================
 
 namespace detail {
@@ -231,13 +241,11 @@ struct AffineTransform {
     {
     }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wfloat-equal"
     constexpr bool isScale() const
     {
         for (usize i = 0; i < 3; ++i) {
             for (usize j = 0; j < 3; ++j) {
-                if ((matrix[i][j] != 0) != (i == j)) {
+                if (not eqExactly(matrix[i][j], 0.f) != eqExactly(i, j)) {
                     return false;
                 }
             }
@@ -247,9 +255,8 @@ struct AffineTransform {
 
     constexpr bool isUniformScale() const
     {
-        return isScale() && matrix[0][0] == matrix[1][1] && matrix[0][0] == matrix[2][2];
+        return isScale() && eqExactly(matrix[0][0], matrix[1][1]) && eqExactly(matrix[0][0], matrix[2][2]);
     }
-#pragma clang diagnostic pop
 
     constexpr vec_type row(usize i) const
     {

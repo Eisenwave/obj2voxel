@@ -29,6 +29,7 @@ add_subdirectory(voxelio)
 add_library(obj2voxel STATIC
     src/3rd_party/tinyobj.hpp
     src/3rd_party/args.hpp
+    src/arrayvector.hpp
     src/constants.hpp
     src/ringbuffer.hpp
     src/threading.hpp

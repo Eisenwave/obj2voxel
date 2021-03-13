@@ -1,6 +1,7 @@
 #ifndef OBJ2VOXEL_VOXELIZATION_HPP
 #define OBJ2VOXEL_VOXELIZATION_HPP
 
+#include "arrayvector.hpp"
 #include "triangle.hpp"
 #include "util.hpp"
 
@@ -9,6 +10,7 @@
 #include "voxelio/vec.hpp"
 
 #include <map>
+#include <vector>
 
 namespace obj2voxel {
 
@@ -52,8 +54,13 @@ inline bool parseColorStrategy(const std::string &str, ColorStrategy &out)
 ///
 /// Before the Voxelizer can be used, a transform from model space must be initialized with initTransform(...);
 class Voxelizer {
+public:
+    using split_buffer_type = ArrayVector<TexturedTriangle, 64>;
+
 private:
-    std::vector<TexturedTriangle> buffers[3]{};
+    std::vector<TexturedTriangle> subdivisionBuffer;
+    split_buffer_type preSplitBuffer;
+    split_buffer_type postSplitBuffer;
     VoxelMap<WeightedUv> uvBuffer;
     VoxelMap<WeightedColor> voxels_;
     WeightedCombineFunction<Vec3f> combineFunction;

@@ -82,6 +82,8 @@ constexpr WeightedCombineFunction<Vec3f> combineFunctionOf(ColorStrategy colorSt
 
 // TRIANGLE SPLITTING ==================================================================================================
 
+using split_buffer_type = Voxelizer::split_buffer_type;
+
 enum class DiscardMode {
     /// No triangles are discarded, they are merely sorted into outLo and outHi. This is the default.
     NONE,
@@ -94,8 +96,8 @@ enum class DiscardMode {
 /// This helper functor lets us insert into outLo or outHi using a one-liner while still considering the DISCARD_MODE.
 template <DiscardMode DISCARD_MODE>
 struct LoHiPusher {
-    std::vector<TexturedTriangle> &outLo;
-    std::vector<TexturedTriangle> &outHi;
+    split_buffer_type &outLo;
+    split_buffer_type &outHi;
 
     void operator()(TexturedTriangle t, bool lo) const noexcept
     {
@@ -183,11 +185,8 @@ void splitTriangle_regularCase(const TexturedTriangle &t,
  * @param outHi the output vector for higher triangles
  */
 template <DiscardMode DISCARD_MODE = DiscardMode::NONE>
-void splitTriangle(const u32 axis,
-                   const u32 plane,
-                   const TexturedTriangle &t,
-                   std::vector<TexturedTriangle> &outLo,
-                   std::vector<TexturedTriangle> &outHi)
+void splitTriangle(
+    const u32 axis, const u32 plane, const TexturedTriangle &t, split_buffer_type &outLo, split_buffer_type &outHi)
 {
     VXIO_DEBUG_ASSERT_LT(axis, 3);
 
@@ -397,8 +396,8 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 
 [[nodiscard]] WeightedUv computeTrianglesUvInVoxel(const VisualTriangle &inputTriangle,
                                                    Vec3u32 pos,
-                                                   std::vector<TexturedTriangle> *preSplitBuffer,
-                                                   std::vector<TexturedTriangle> *postSplitBuffer)
+                                                   split_buffer_type *preSplitBuffer,
+                                                   split_buffer_type *postSplitBuffer)
 {
     for (unsigned hi = 0; hi < 2; ++hi) {
         const auto splittingFunction =
@@ -442,8 +441,8 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                          TexturedTriangle subTriangle,
                          Vec3u32 min,
                          Vec3u32 max,
-                         std::vector<TexturedTriangle> *preSplitBuffer,
-                         std::vector<TexturedTriangle> *postSplitBuffer,
+                         split_buffer_type *preSplitBuffer,
+                         split_buffer_type *postSplitBuffer,
                          VoxelMap<WeightedUv> &out)
 {
     // sqrt(3) = 1.73... with some leeway to account for imprecision
@@ -502,23 +501,23 @@ void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 ma
 
 void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept
 {
-    for (size_t i = 0; i < 3; ++i) {
-        buffers[i].clear();
-    }
+    subdivisionBuffer.clear();
+    preSplitBuffer.clear();
+    postSplitBuffer.clear();
     uvBuffer.clear();
 
     // 1. Subdivide
-    subdivideLargeVolumeTriangles(inputTriangle, buffers[0]);
+    subdivideLargeVolumeTriangles(inputTriangle, subdivisionBuffer);
 
     if constexpr (voxelio::build::DEBUG) {
-        for (const Triangle &t : buffers[0]) {
+        for (const Triangle &t : subdivisionBuffer) {
             globalTriangleDebugCallback(t);
         }
     }
 
     // 2. Voxelize
-    for (TexturedTriangle subTriangle : buffers[0]) {
-        voxelizeSubTriangle(inputTriangle, subTriangle, min, max, buffers + 1, buffers + 2, uvBuffer);
+    for (TexturedTriangle subTriangle : subdivisionBuffer) {
+        voxelizeSubTriangle(inputTriangle, subTriangle, min, max, &preSplitBuffer, &postSplitBuffer, uvBuffer);
     }
 }
 
