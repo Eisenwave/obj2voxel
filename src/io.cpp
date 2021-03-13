@@ -334,21 +334,22 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
     std::replace(sanitizedName.begin(), sanitizedName.end(), '\\', '/');
     std::optional<FileInputStream> stream = FileInputStream::open(sanitizedName, OpenMode::BINARY);
     if (not stream.has_value()) {
-        VXIO_LOG(WARNING, "Failed to open texture file \"" + name + "\" of material \"" + material + '"');
+        VXIO_LOG(WARNING, "Failed to open texture file \"" + sanitizedName + "\" of material \"" + material + '"');
         return std::nullopt;
     }
 
     std::string err;
     std::optional<Image> image = voxelio::png::decode(*stream, 4, err);
     if (not image.has_value()) {
-        VXIO_LOG(WARNING, "Could open, but failed to decode texture \"" + name + "\" of material \"" + material + '"');
+        VXIO_LOG(WARNING,
+                 "Could open, but failed to decode texture \"" + sanitizedName + "\" of material \"" + material + '"');
         VXIO_LOG(WARNING, "Caused by STBI error: " + err);
         return std::nullopt;
     }
     VXIO_ASSERT(err.empty());
     image->setWrapMode(WrapMode::REPEAT);
 
-    VXIO_LOG(INFO, "Loaded texture \"" + name + "\"");
+    VXIO_LOG(INFO, "Loaded texture \"" + sanitizedName + "\"");
     return Texture{std::move(*image)};
 }
 
