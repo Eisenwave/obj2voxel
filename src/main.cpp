@@ -115,8 +115,8 @@ int mainImpl(std::string inFile,
         return 1;
     }
 
-    FileType inType = getAndValidateFileType<FilePurpose::INPUT>(inFile);
-    FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(outFile);
+    const FileType inType = getAndValidateFileType<FilePurpose::INPUT>(inFile);
+    const FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(outFile);
 
     if (resolution >= 1024 * 1024) {
         VXIO_LOG(WARNING, "Very high resolution (" + stringifyLargeInt(resolution) + "), intentional?")
@@ -186,11 +186,13 @@ int mainImpl(std::string inFile,
 void initLogging()
 {
     if constexpr (voxelio::build::DEBUG) {
-        obj2voxel_set_log_level(DEBUG_LOG_LEVEL);
+        voxelio::setLogLevel(voxelio::LogLevel::DEBUG);
         VXIO_LOG(DEBUG, "Running debug build");
     }
     else {
-        obj2voxel_set_log_level(RELEASE_LOG_LEVEL);
+        voxelio::setLogLevel(voxelio::LogLevel::INFO);
+        voxelio::enableLoggingTimestamp(false);
+        voxelio::enableLoggingSourceLocation(false);
     }
 
     setLogBackend(nullptr, ENABLE_ASYNC_LOGGING);
