@@ -39,43 +39,44 @@ typedef bool(obj2voxel_log_callback)(void *callback_data, const char *msg, obj2v
 
 // ENUMS ===============================================================================================================
 
-#define OBJ2VOXEL_ENUM static const obj2voxel_enum_t
-#define OBJ2VOXEL_ERROR static const obj2voxel_error_t
+/// Voxel color is determined solely by triangle piece with the gratest area.
+static const obj2voxel_enum_t OBJ2VOXEL_MAX_STRATEGY = 0;
+/// Voxel color is a weighted average of triangle piece colors, weighted by area.
+static const obj2voxel_enum_t OBJ2VOXEL_BLEND_STRATEGY = 1;
 
-OBJ2VOXEL_ENUM OBJ2VOXEL_MAX_STRATEGY = 0;
-OBJ2VOXEL_ENUM OBJ2VOXEL_BLEND_STRATEGY = 1;
-
-OBJ2VOXEL_ENUM OBJ2VOXEL_UV_CLAMP = 0;
-OBJ2VOXEL_ENUM OBJ2VOXEL_UV_WRAP = 1;
+/// UV coordinates are clamped to range [0,1].
+static const obj2voxel_enum_t OBJ2VOXEL_UV_CLAMP = 0;
+/// UV coordinates are wrapped around range [0,1] (for tiling textures).
+static const obj2voxel_enum_t OBJ2VOXEL_UV_WRAP = 1;
 
 /// Nothing gets logged.
-OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_SILENT = 0;
+static const obj2voxel_enum_t OBJ2VOXEL_LOG_LEVEL_SILENT = 0;
 /// Errors get logged.
-OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_ERROR = 1;
+static const obj2voxel_enum_t OBJ2VOXEL_LOG_LEVEL_ERROR = 1;
 /// Errors and warnings get logged.
-OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_WARNING = 2;
+static const obj2voxel_enum_t OBJ2VOXEL_LOG_LEVEL_WARNING = 2;
 /// Errors, warnings, and info messages get logged.
-OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_INFO = 3;
+static const obj2voxel_enum_t OBJ2VOXEL_LOG_LEVEL_INFO = 3;
 /// All messages, including debug messages get logged.
-OBJ2VOXEL_ENUM OBJ2VOXEL_LOG_LEVEL_DEBUG = 4;
+static const obj2voxel_enum_t OBJ2VOXEL_LOG_LEVEL_DEBUG = 4;
 
 /// No error.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_OK = 0;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_OK = 0;
 /// No input was provided.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_INPUT = 1;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_NO_INPUT = 1;
 /// No output was provided.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_OUTPUT = 2;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_NO_OUTPUT = 2;
 /// No resolution was specified.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_NO_RESOLUTION = 3;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_NO_RESOLUTION = 3;
 /// An I/O error occured when attempting to open the input file.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE = 4;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_INPUT_FILE = 4;
 /// An I/O error occured when attempting to open the output file.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE = 5;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_IO_ERROR_ON_OPEN_OUTPUT_FILE = 5;
 /// An I/O error occured when attempting write voxels.
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 6;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_IO_ERROR_DURING_VOXEL_WRITE = 6;
 /// Voxelization was attempted after it was already completed once.
 /// Instances are throwaway objects, only to be used once!
-OBJ2VOXEL_ERROR OBJ2VOXEL_ERR_DOUBLE_VOXELIZATION = 7;
+static const obj2voxel_error_t OBJ2VOXEL_ERR_DOUBLE_VOXELIZATION = 7;
 
 // INSTANCE ============================================================================================================
 
@@ -189,8 +190,8 @@ void obj2voxel_set_output_file(obj2voxel_instance *instance, const char *file, c
 
 /**
  * @brief Sets the output to be memory with a file type.
- * Voxelization will happen to memory instead of to a file in this case and the output bytes can later be obtained
- * using obj2voxel_get_output_memory().
+ * Voxels will be stored in memory instead of being written to a file.
+ * The output bytes can be obtained using obj2voxel_get_output_memory() after voxelization.
  * @param instance the instance
  * @param type the file type as an extension without a dot or null for auto-detection (e.g. "vox")
  */
