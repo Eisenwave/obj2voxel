@@ -269,6 +269,8 @@ int main()
     constexpr int unitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
     return mainImpl("//home/user/assets/mesh/sword/sword.obj",
                     "/home/user/assets/mesh/sword/sword_128.vl32",
+                    "",
+                    "",
                     128,
                     0,
                     "",
