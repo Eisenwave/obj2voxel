@@ -188,7 +188,7 @@ public:
 
     void waitUntilZero() const noexcept
     {
-        wait([this](type t) {
+        wait([](type t) {
             return t == 0;
         });
     }

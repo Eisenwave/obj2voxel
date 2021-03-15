@@ -32,16 +32,6 @@ inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, u32 axis, u32 plane
     return isZero(d) ? 0 : (org[axis] - real_type(plane)) / d;
 }
 
-/// Returns true if two floating point numbers are exactly equal without warnings (-Wfloat-equal).
-template <typename Float>
-constexpr bool eqExactly(Float a, Float b)
-{
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wfloat-equal"
-    return a == b;
-#pragma clang diagnostic pop
-}
-
 /**
  * @brief Returns the signed distance of a point and a plane.
  * @param p the point

@@ -22,13 +22,17 @@ using namespace voxelio;
 using real_type = tinyobj::real_t;
 
 /// Returns true if two floating point numbers are exactly equal without warnings (-Wfloat-equal).
-template <typename Float>
+template <typename Float, std::enable_if_t<std::is_floating_point_v<Float>, int> = 0>
 constexpr bool eqExactly(Float a, Float b)
 {
+#ifdef VXIO_CLANG
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wfloat-equal"
+#endif
     return a == b;
+#ifdef VXIO_CLANG
 #pragma clang diagnostic pop
+#endif
 }
 
 // VEC UTILITY FUNCTIONS ===============================================================================================
@@ -245,7 +249,7 @@ struct AffineTransform {
     {
         for (usize i = 0; i < 3; ++i) {
             for (usize j = 0; j < 3; ++j) {
-                if (not eqExactly(matrix[i][j], 0.f) != eqExactly(i, j)) {
+                if (not eqExactly(matrix[i][j], 0.f) != (i == j)) {
                     return false;
                 }
             }
