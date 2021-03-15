@@ -42,8 +42,6 @@ namespace {
 
 using namespace voxelio;
 
-constexpr Vec3u IDENTITY_PERMUTATION = {0, 1, 2};
-
 constexpr const char *nameOfColorStrategy(obj2voxel_enum_t strategy)
 {
     return strategy == OBJ2VOXEL_BLEND_STRATEGY ? "blend" : "max";
@@ -78,18 +76,34 @@ constexpr bool isSupportedFormat<FilePurpose::OUTPUT>(FileType type)
 }
 
 template <FilePurpose PURPOSE>
-FileType getAndValidateFileType(const std::string &file)
+FileType getAndValidateFileType(const std::string &file, const std::string &format)
 {
     constexpr bool isInput = PURPOSE == FilePurpose::INPUT;
 
-    std::optional<FileType> type = detectFileType(file);
-    if (not type.has_value()) {
-        VXIO_LOG(WARNING, "Can't detect file type of \"" + file + '"' + (isInput ? ", assuming Wavefront OBJ" : ""));
-        return FileType::WAVEFRONT_OBJ;
+    std::optional<FileType> type;
+    if (format.empty()) {
+        type = detectFileType(file);
+        if (not type.has_value()) {
+            if constexpr (PURPOSE == FilePurpose::INPUT) {
+                VXIO_LOG(WARNING, "Can't detect file type of \"" + file + "\", assuming Wavefront OBJ");
+                return FileType::WAVEFRONT_OBJ;
+            }
+            else {
+                VXIO_LOG(FAILURE, "Can't detect file type of \"" + file + "\"");
+                std::exit(1);
+            }
+        }
+    }
+    else {
+        type = fileTypeOfExtension(format);
+        if (not type.has_value()) {
+            VXIO_LOG(FAILURE, '"' + format + "\" is not a valid format");
+            std::exit(1);
+        }
     }
 
     if (not isSupportedFormat<PURPOSE>(*type)) {
-        VXIO_LOG(ERROR,
+        VXIO_LOG(FAILURE,
                  "Detected " + std::string(isInput ? "input" : "output") + " file type (" + std::string(nameOf(*type)) +
                      ") is not supported");
         std::exit(1);
@@ -99,12 +113,14 @@ FileType getAndValidateFileType(const std::string &file)
 
 int mainImpl(std::string inFile,
              std::string outFile,
+             std::string inFormat,
+             std::string outFormat,
              unsigned resolution,
-             unsigned threads = 0,
-             std::string textureFile = "",
-             bool supersample = DEFAULT_SUPERSAMPLE,
-             obj2voxel_enum_t colorStrategy = DEFAULT_COLOR_STRATEGY,
-             Vec3u permutation = IDENTITY_PERMUTATION)
+             unsigned threads,
+             std::string textureFile,
+             bool supersample,
+             obj2voxel_enum_t colorStrategy,
+             const int unitTransform[9])
 {
     VXIO_LOG(INFO,
              "Converting \"" + inFile + "\" to \"" + outFile + "\" at resolution " + stringifyLargeInt(resolution) +
@@ -115,8 +131,8 @@ int mainImpl(std::string inFile,
         return 1;
     }
 
-    const FileType inType = getAndValidateFileType<FilePurpose::INPUT>(inFile);
-    const FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(outFile);
+    const FileType inType = getAndValidateFileType<FilePurpose::INPUT>(inFile, inFormat);
+    const FileType outType = getAndValidateFileType<FilePurpose::OUTPUT>(outFile, outFormat);
 
     if (resolution >= 1024 * 1024) {
         VXIO_LOG(WARNING, "Very high resolution (" + stringifyLargeInt(resolution) + "), intentional?")
@@ -156,10 +172,6 @@ int mainImpl(std::string inFile,
         }
     }
 
-    int unitTransform[9]{};
-    for (usize i = 0; i < 3; ++i) {
-        unitTransform[i * 3 + permutation[i]] = 1;
-    }
     obj2voxel_set_unit_transform(instance, unitTransform);
 
     obj2voxel_set_resolution(instance, resolution);
@@ -204,26 +216,44 @@ void initLogging()
 }  // namespace obj2voxel
 
 #ifndef OBJ2VOXEL_MANUAL_TEST
-static bool parsePermutation(std::string str, voxelio::Vec3u &out)
+static void parsePermutation(std::string str, int outUnitTransform[9])
 {
     using namespace voxelio;
 
     if (str.size() != 3) {
-        return false;
+        VXIO_LOG(FAILURE, "Invalid permutation length (" + stringify(str.size()) + ")");
+        std::exit(1);
     }
-    toLowerCase(str);
 
     bool found[3]{};
 
     for (usize i = 0; i < 3; ++i) {
-        unsigned axis = static_cast<unsigned>(str[i] - 'x');
-        if (axis > 2) {
-            return false;
+        int *const outRow = outUnitTransform + i * 3;
+
+        char c = str[i];
+        int twoIfNegative = 0;
+        if (std::isupper(c)) {
+            c = static_cast<char>(std::tolower(c));
+            twoIfNegative = 2;
         }
-        out[i] = axis;
+
+        usize axis = static_cast<unsigned>(c - 'x');
+        if (axis > 2) {
+            VXIO_LOG(FAILURE, "Invalid permutation char: '" + std::string{c} + "'")
+            std::exit(1);
+        }
+
         found[axis] = true;
+
+        outRow[axis] = 1 - twoIfNegative;
+        outRow[++axis % 3] = 0;
+        outRow[++axis % 3] = 0;
     }
-    return found[0] + found[1] + found[2] == 3;
+
+    if (found[0] + found[1] + found[2] != 3) {
+        VXIO_LOG(FAILURE, "Invalid combination of permutation chars \"" + str + "\"");
+        std::exit(1);
+    }
 }
 
 int main(int argc, char **argv)
@@ -236,29 +266,41 @@ int main()
     initLogging();
 
 #ifdef OBJ2VOXEL_MANUAL_TEST
-    return mainImpl("//home/user/assets/mesh/sword/sword.obj", "/home/user/assets/mesh/sword/sword_128.vl32", 128);
+    constexpr int unitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    return mainImpl("//home/user/assets/mesh/sword/sword.obj",
+                    "/home/user/assets/mesh/sword/sword_128.vl32",
+                    128,
+                    0,
+                    "",
+                    DEFAULT_SUPERSAMPLE,
+                    OBJ2VOXEL_MAX_STRATEGY,
+                    unitTransform);
 #else
     const std::unordered_map<std::string, obj2voxel_enum_t> strategyMap{{"max", OBJ2VOXEL_MAX_STRATEGY},
                                                                         {"blend", OBJ2VOXEL_BLEND_STRATEGY}};
     const unsigned threadCount = std::thread::hardware_concurrency();
 
-    args::ArgumentParser parser(CLI_HEADER, CLI_FOOTER);
+    args::ArgumentParser parser("", CLI_FOOTER);
 
     auto ggroup = args::Group(parser, "General Options:");
     auto helpArg = args::HelpFlag(ggroup, "help", HELP_DESCR, {'h', "help"});
+    auto verboseArg = args::Flag(ggroup, "verbose", VERBOSE_DESCR, {'v', "verbose"});
+    auto eightyArg = args::Flag(ggroup, "eighty", EIGHTY_DESCR, {"80"});
 
     auto fgroup = args::Group(parser, "File Options:");
     auto inFileArg = args::Positional<std::string>(fgroup, "INPUT_FILE", INPUT_DESCR);
     auto outFileArg = args::Positional<std::string>(fgroup, "OUTPUT_FILE", OUTPUT_DESCR);
+    auto inFormatArg = args::ValueFlag<std::string>(fgroup, "input_format", INPUT_FORMAT_DESCR, {'i'}, "");
+    auto outFormatArg = args::ValueFlag<std::string>(fgroup, "output_format", OUTPUT_FORMAT_DESCR, {'o'}, "");
     auto textureArg = args::ValueFlag<std::string>(fgroup, "texture", TEXTURE_DESCR, {'t'}, "");
 
     auto vgroup = args::Group(parser, "Voxelization Options:");
-    auto resolutionArg = args::ValueFlag<unsigned>(vgroup, "resolution", RESOLUTION_DESCR, {'r'});
+    auto resolutionArg = args::ValueFlag<unsigned>(vgroup, "resolution", RESOLUTION_DESCR, {'r', "res"});
     auto strategyArg = args::MapFlag<std::string, obj2voxel_enum_t>(
-        vgroup, "max|blend", STRATEGY_DESCR, {'s'}, strategyMap, DEFAULT_COLOR_STRATEGY);
-    auto permutationArg = args::ValueFlag<std::string>(vgroup, "permutation", PERMUTATION_ARG, {'p'}, "xyz");
-    auto ssArg = args::Flag(vgroup, "supersample", SS_DESCR, {'u'});
-    auto threadsArg = args::ValueFlag<unsigned>(vgroup, "threads", THREADS_DESCR, {'j'}, threadCount);
+        vgroup, "max|blend", STRATEGY_DESCR, {'s', "strat"}, strategyMap, DEFAULT_COLOR_STRATEGY);
+    auto permutationArg = args::ValueFlag<std::string>(vgroup, "permutation", PERMUTATION_ARG, {'p', "perm"}, "xyz");
+    auto ssArg = args::Flag(vgroup, "supersample", SS_DESCR, {"ss"});
+    auto threadsArg = args::ValueFlag<unsigned>(vgroup, "threads", THREADS_DESCR, {'j', "threads"}, threadCount);
 
     bool complete = parser.ParseCLI(argc, argv);
     complete &= parser.Matched();
@@ -267,24 +309,37 @@ int main()
     complete &= resolutionArg.Matched();
 
     if (helpArg.Matched() || not complete) {
+        parser.helpParams.width = eightyArg.Matched() ? 80 : 120;
+        parser.helpParams.usageString = "Usage: ";
+        parser.helpParams.flagindent = 2;
+        parser.helpParams.progindent = 0;
+        parser.helpParams.optionsString = "";
+        parser.helpParams.longSeparator = "";
+        parser.helpParams.gutter = 4;
+        parser.helpParams.programName = "obj2voxel";
+        parser.helpParams.addNewlineBeforeDescription = false;
         parser.Help(std::cout);
         return 1;
     }
 
-    Vec3u permutation;
-    if (not parsePermutation(permutationArg.Get(), permutation)) {
-        VXIO_LOG(ERROR, "\"" + permutationArg.Get() + "\" is not a valid permutation");
-        return 1;
+    if (verboseArg.Matched()) {
+        voxelio::enableLoggingSourceLocation(true);
+        voxelio::enableLoggingTimestamp(true);
+        voxelio::setLogLevel(LogLevel::DEBUG);
     }
-    VXIO_LOG(DEBUG, "Parsed permutation: " + permutationArg.Get() + " -> " + permutation.toString());
+
+    int unitTransform[9];
+    parsePermutation(permutationArg.Get(), unitTransform);
 
     mainImpl(std::move(inFileArg.Get()),
              std::move(outFileArg.Get()),
+             std::move(inFormatArg.Get()),
+             std::move(outFormatArg.Get()),
              resolutionArg.Get(),
              threadsArg.Get(),
              std::move(textureArg.Get()),
              ssArg.Get(),
              strategyArg.Get(),
-             permutation);
+             unitTransform);
 #endif
 }
