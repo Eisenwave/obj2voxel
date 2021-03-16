@@ -2,20 +2,24 @@
 #define OBJ2VOXEL_RINGBUFFER_HPP
 
 #include "voxelio/assert.hpp"
-#include "voxelio/primitives.hpp"
+
+#include <cstddef>
+#include <type_traits>
 
 namespace obj2voxel {
-
-using namespace voxelio;
 
 /**
  * @brief A simple ring buffer implementation for trivially destructible types.
  * A ring buffer is a FIFO container with a constant capacity.
  */
-template <typename T, usize N, std::enable_if_t<std::is_trivially_destructible_v<T>, int> = 0>
+template <typename T, std::size_t N, std::enable_if_t<std::is_trivial_v<T>, int> = 0>
 class RingBuffer {
+public:
+    static constexpr std::size_t capacity = N;
+
+private:
     T content[N];
-    usize r = 0, w = 0, avail = 0;
+    std::size_t r = 0, w = 0, avail = 0;
 
 public:
     constexpr RingBuffer() noexcept = default;
@@ -56,7 +60,7 @@ public:
     }
 
     /// Returns the current size of the ring buffer which can be at most N.
-    constexpr usize size() const noexcept
+    constexpr std::size_t size() const noexcept
     {
         return avail;
     }
