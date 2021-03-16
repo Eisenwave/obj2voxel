@@ -9,11 +9,8 @@
 #include "voxelio/stringify.hpp"
 
 #include <atomic>
-#include <thread>
-
-#ifdef VXIO_DEBUG
 #include <ostream>  // we only use this to stringify std::thread::id in a debug log message
-#endif
+#include <thread>
 
 namespace obj2voxel {
 namespace {
