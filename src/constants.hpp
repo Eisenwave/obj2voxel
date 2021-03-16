@@ -28,8 +28,8 @@ constexpr const char *EIGHTY_DESCR = "Print help menu in 80 column mode.";
 constexpr const char *INPUT_DESCR = "First argument. Path to OBJ or STL input file.";
 constexpr const char *OUTPUT_DESCR = "Second argument. Path to QEF, PLY or VL32 output file.";
 
-constexpr const char *INPUT_FORMAT_DESCR = "Explicit input format. Either obj or stl. (Optional)";
-constexpr const char *OUTPUT_FORMAT_DESCR = "Explicit output format. Example: qef (Optional)";
+constexpr const char *INPUT_FORMAT_DESCR = "Explicit input format. (Optional)";
+constexpr const char *OUTPUT_FORMAT_DESCR = "Explicit output format. (Optional)";
 
 constexpr const char *TEXTURE_DESCR = "Fallback texture path. Used when model has UV coordinates but textures can't "
                                       "be found in the material library. (Default: none)";
