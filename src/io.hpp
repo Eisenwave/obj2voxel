@@ -47,7 +47,7 @@ struct ITriangleStream {
      */
     static std::unique_ptr<ITriangleStream> fromStlFile(const std::string &inFile) noexcept;
 
-    /// virtual destructor
+    /// Virtual destructor.
     virtual ~ITriangleStream() noexcept;
 
     /// Assigns the next triangle.
@@ -65,7 +65,7 @@ struct IVoxelSink {
     /// Virtual destructor, flushes the sink.
     virtual ~IVoxelSink() noexcept;
 
-    /// Returns the underlying output strum or nullptr if the sink is streamless.
+    /// Returns the underlying output stream or nullptr if the sink is streamless.
     virtual const OutputStream *streamOrNull() const = 0;
 
     /// Returns true if the writer has not encountered any errors yet and the sink can take more voxels.

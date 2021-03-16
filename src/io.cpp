@@ -21,6 +21,8 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "3rd_party/tinyobj.hpp"
 
+static_assert(std::is_same_v<obj2voxel::real_type, tinyobj::real_t>, "obj2voxel::real_type does not match tinyobj");
+
 namespace obj2voxel {
 
 // INPUT ===============================================================================================================
@@ -104,7 +106,7 @@ public:
                       shapes_type shapes,
                       materials_type materials,
                       textures_type textures,
-                      const Texture *defaultTexture)
+                      const Texture *defaultTexture) noexcept
         : attrib{std::move(attrib)}
         , shapes{std::move(shapes)}
         , materials{std::move(materials)}
@@ -117,13 +119,13 @@ public:
     bool next(VisualTriangle &out) noexcept final;
 
 private:
-    bool hasNext() const
+    bool hasNext() const noexcept
     {
         return shapesIndex < shapes.size() && faceIndex < faceCountOfCurrentShape;
     }
 
     /// Returns the face count of the shape at the given index or zero if the index is out of bounds.
-    usize faceCountOfShapeOrZero(usize index) const
+    usize faceCountOfShapeOrZero(usize index) const noexcept
     {
         return index >= shapes.size() ? 0 : shapes[index].mesh.num_face_vertices.size();
     }
@@ -140,7 +142,7 @@ public:
     bool next(VisualTriangle &out) noexcept final;
 
 private:
-    bool hasNext() const
+    bool hasNext() const noexcept
     {
         return index < vertices.size();
     }
