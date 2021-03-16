@@ -1,25 +1,17 @@
 #ifndef OBJ2VOXEL_UTIL_HPP
 #define OBJ2VOXEL_UTIL_HPP
 
-#include "3rd_party/tinyobj.hpp"
-
 #include "voxelio/color.hpp"
 #include "voxelio/ileave.hpp"
 #include "voxelio/types.hpp"
 #include "voxelio/vec.hpp"
 
-#define OBJ2VOXEL_USE_UNORDERED_MAP
-
-#ifdef OBJ2VOXEL_USE_UNORDERED_MAP
 #include <unordered_map>
-#else
-#include <map>
-#endif
 
 namespace obj2voxel {
 
 using namespace voxelio;
-using real_type = tinyobj::real_t;
+using real_type = float;
 
 /// Returns true if two floating point numbers are exactly equal without warnings (-Wfloat-equal).
 template <typename Float, std::enable_if_t<std::is_floating_point_v<Float>, int> = 0>
@@ -133,7 +125,7 @@ constexpr Vec<T, N> abs(Vec<T, N> v) noexcept
 
 /// Computes the length or magnitude of the vector.
 template <typename T, size_t N>
-T length(Vec<T, N> v) noexcept
+inline T length(Vec<T, N> v) noexcept
 {
     T result = std::sqrt(dot<T, T, N>(v, v));
     return result;
@@ -184,24 +176,18 @@ using WeightedCombineFunction = Weighted<T> (*)(const Weighted<T> &, const Weigh
 
 // VOXEL MAP ===========================================================================================================
 
-template <typename K, typename V>
-#ifdef OBJ2VOXEL_USE_UNORDERED_MAP
-using voxel_map_base_type = std::unordered_map<K, V>;
-#else
-using voxel_map_base_type = std::map<K, V>;
-#endif
-
 template <typename T>
-struct VoxelMap : public voxel_map_base_type<u64, T> {
-    using base_type = voxel_map_base_type<u64, T>;
+struct VoxelMap : public std::unordered_map<u64, T> {
+    using base_type = std::unordered_map<u64, T>;
     using iterator = typename base_type::iterator;
+    using const_iterator = typename base_type::const_iterator;
 
-    static u64 indexOf(Vec3u32 pos) noexcept
+    static constexpr u64 indexOf(Vec3u32 pos) noexcept
     {
         return voxelio::ileave3(pos.x(), pos.y(), pos.z());
     }
 
-    static Vec3u32 posOf(u64 index) noexcept
+    static constexpr Vec3u32 posOf(u64 index) noexcept
     {
         Vec3u32 result;
         voxelio::dileave3(index, result.data());
