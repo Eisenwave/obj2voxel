@@ -25,8 +25,8 @@ constexpr const char *HELP_DESCR = "Display this help menu.";
 constexpr const char *VERBOSE_DESCR = "Enables verbose logging.";
 constexpr const char *EIGHTY_DESCR = "Print help menu in 80 column mode.";
 
-constexpr const char *INPUT_DESCR = "First argument. Path to OBJ or STL input file.";
-constexpr const char *OUTPUT_DESCR = "Second argument. Path to QEF, PLY or VL32 output file.";
+constexpr const char *INPUT_DESCR = "First argument. Path to input file.";
+constexpr const char *OUTPUT_DESCR = "Second argument. Path to output file.";
 
 constexpr const char *INPUT_FORMAT_DESCR = "Explicit input format. (Optional)";
 constexpr const char *OUTPUT_FORMAT_DESCR = "Explicit output format. (Optional)";
