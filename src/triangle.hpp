@@ -37,76 +37,76 @@ struct Triangle {
     Vec3 v[3];
 
     /// Returns a vertex at a given index in [0,3).
-    constexpr Vec3 vertex(usize index) const
+    constexpr Vec3 vertex(usize index) const noexcept
     {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return v[index];
     }
 
     /// Returns an edge between two vertices.
-    constexpr Vec3 edge(usize start, usize end) const
+    constexpr Vec3 edge(usize start, usize end) const noexcept
     {
         return vertex(end) - vertex(start);
     }
 
     /// Returns an edge from the vertex at the given index to its successor.
-    constexpr Vec3 neighborEdge(usize index) const
+    constexpr Vec3 neighborEdge(usize index) const noexcept
     {
         return edge(index, (index + 1) % 3);
     }
 
     /// Returns the (unnormalized) normal of this triangle.
-    constexpr Vec3 normal() const
+    constexpr Vec3 normal() const noexcept
     {
         return cross(edge(0, 1), edge(0, 2));
     }
 
     /// Returns the minimum coordinate of this triangle on one axis.
-    constexpr real_type min(usize i) const
+    constexpr real_type min(usize i) const noexcept
     {
         VXIO_DEBUG_ASSERT_LT(i, 3);
         return obj2voxel::min(v[0][i], v[1][i], v[2][i]);
     }
 
     /// Returns the minimum coordinate of this triangle on one axis.
-    constexpr real_type max(usize i) const
+    constexpr real_type max(usize i) const noexcept
     {
         VXIO_DEBUG_ASSERT_LT(i, 3);
         return obj2voxel::max(v[0][i], v[1][i], v[2][i]);
     }
 
     /// Returns an inclusive minimum boundary.
-    constexpr Vec3 min() const
+    constexpr Vec3 min() const noexcept
     {
         return obj2voxel::min(v[0], v[1], v[2]);
     }
 
     /// Returns an inclusive maximum boundary.
-    constexpr Vec3 max() const
+    constexpr Vec3 max() const noexcept
     {
         return obj2voxel::max(v[0], v[1], v[2]);
     }
 
     /// Returns an inclusive minimum voxel boundary.
-    constexpr Vec3u32 voxelMin() const
+    constexpr Vec3u32 voxelMin() const noexcept
     {
         return floor(min()).cast<u32>();
     }
 
     /// Returns an exclusive maximum voxel boundary.
-    constexpr Vec3u32 voxelMax() const
+    constexpr Vec3u32 voxelMax() const noexcept
     {
         return floor(max()).cast<u32>() + Vec3u32::one();
     }
 
     /// Returns the area of the triangle.
-    real_type area() const
+    real_type area() const noexcept
     {
         return length(normal()) / 2;
     }
 
     /// Returns the center of the triangle.
-    constexpr Vec3 center() const
+    constexpr Vec3 center() const noexcept
     {
         Vec3 sum = v[0] + v[1] + v[2];
         return sum / 3;
@@ -118,20 +118,20 @@ struct TexturedTriangle : public Triangle {
     Vec2f t[3];
 
     /// Returns the texture coordinates at the index in [0,3).
-    constexpr Vec2f texture(usize index) const
+    constexpr Vec2f texture(usize index) const noexcept
     {
         VXIO_DEBUG_ASSERT_LT(index, 3);
         return t[index];
     }
 
     /// Returns the center of the UV coordinates.
-    constexpr Vec2f textureCenter() const
+    constexpr Vec2f textureCenter() const noexcept
     {
         return (t[0] + t[1] + t[2]) / 3;
     }
 
     /// Subdivides this triangle into four new triangles in a "triforce" or Sierpinski pattern.
-    constexpr void subdivide4(TexturedTriangle out[4]) const
+    constexpr void subdivide4(TexturedTriangle out[4]) const noexcept
     {
         Vec3 geo[3]{mix(v[0], v[1], 0.5f), mix(v[1], v[2], 0.5f), mix(v[2], v[0], 0.5f)};
         Vec2f tex[3]{mix(t[0], t[1], 0.5f), mix(t[1], t[2], 0.5f), mix(t[2], t[0], 0.5f)};
