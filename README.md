@@ -23,32 +23,48 @@ After installing, the executable will be in your `build` directory.
 
 ```sh
 # Usage
-./obj2voxel input_file output_file -r <resolution> # ...
+./obj2voxel input_file output_file -r <resolution> # other options ...
 
 # Example
 ./obj2voxel in.obj out.qef -t texture.png -r 128 -s max
 ```
 
-##### `input_file`
+### General Options
+
+##### `-h/--help`
+displays the help menu.
+The help menu is also displayed if not enough options were provided.
+
+##### `-v/--verbose`
+enables verbose logging.
+Time stamps, source code locations and debug messages will be displayed.
+
+##### `--80`
+enables 80-column displaying of the help menu.
+By default, more columns than 80 may be printed which may not be compatible with your terminal.
+
+### File Options
+
+##### `input_file` (required)
 is the relative or absolute path to the input file.
 Depending on the extension `.stl` or `.obj` a different input format is chosen.
 If the file type can't be detected, the default is Wavefront OBJ.
   
-##### `output_file`
+##### `output_file` (required)
 is the relative or absolue path to the output file.
 Depending on the extension `.ply`, `.qef`, etc. a different output format is chosen.
 Check the list of supported formats.
 There is no default so obj2voxel fails if the file type can't be identified by its extension.
 
-##### `-r <resolution>`
-is the voxel grid resolution.
-This is a maximum for all axes, meaning that a non-cubical model will still fit into this block.
-The output model will be at most r³ voxels large.
+##### `-i (obj|stl)`
+is the explicit input format.
+This allows specifying an extension such as `obj` or `stl` explictly for files with no extension.
+By default, this is not necessary.
 
-##### `-s (max|blend)`
-is a coloring strategy for when multiple triangles occupy one voxel.
-See below for more details on how this option impacts the voxels.
-The default is `max`.
+##### `-o (ply|qef|vl32|vox)`
+is the explicit output format.
+This allows specifying an extension such as `qef` or `vox` explictly for files with no extension.
+By default, this is not necessary.
 
 ##### `-t <texture>`
 is the optional path to a texture file.
@@ -56,17 +72,31 @@ This texture is used for triangles with UV coordinates but no materials.
 There are some models which don't have material libraries at all.
 This option is very useful for those types of models.
 
-##### `-p <permutation>`
+### Voxelization Options
+
+##### `-r/--res <resolution>` (required)
+is the voxel grid resolution.
+This is a maximum for all axes, meaning that a non-cubical model will still fit into this block.
+The output model will be at most r³ voxels large.
+
+##### `-s/--strat (max|blend)`
+is a coloring strategy for when multiple triangles occupy one voxel.
+See below for more details on how this option impacts the voxels.
+The default is `max`.
+
+##### `-p/--perm <permutation>`
 is the axis permutation.
 The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
+Capital letters flip axes.
+For example, for `xYz` the y-axis is flipped.
 This is useful for importing models from software where a different axis is being used for "up".
 
-##### `-u`
+##### `--ss`
 enables 2x supersampling.
 The model is voxelized at double resolution and then downscaled.
 See below for more details.
 
-##### `-j <threads>`
+##### `-j/--threads <threads>`
 is the number of worker threads to be started.
 obj2voxel supports parallelism and if `threads` is not zero, worker threads will be started that voxelize many triangles simultaneously.
 This option is set to the number of hardware threads by default.
