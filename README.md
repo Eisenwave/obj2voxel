@@ -61,7 +61,7 @@ is the explicit input format.
 This allows specifying an extension such as `obj` or `stl` explictly for files with no extension.
 By default, this is not necessary.
 
-##### `-o (ply|qef|vl32|vox)`
+##### `-o (ply|qef|vl32|vox|xyzrgb)`
 is the explicit output format.
 This allows specifying an extension such as `qef` or `vox` explictly for files with no extension.
 By default, this is not necessary.
