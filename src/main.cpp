@@ -301,7 +301,7 @@ int main()
     auto strategyArg = args::MapFlag<std::string, obj2voxel_enum_t>(
         vgroup, "max|blend", STRATEGY_DESCR, {'s', "strat"}, strategyMap, DEFAULT_COLOR_STRATEGY);
     auto permutationArg = args::ValueFlag<std::string>(vgroup, "permutation", PERMUTATION_ARG, {'p', "perm"}, "xyz");
-    auto ssArg = args::Flag(vgroup, "supersample", SS_DESCR, {"ss"});
+    auto ssArg = args::Flag(vgroup, "supersample", SS_DESCR, {'u', "super"});
     auto threadsArg = args::ValueFlag<unsigned>(vgroup, "threads", THREADS_DESCR, {'j', "threads"}, threadCount);
 
     bool complete = parser.ParseCLI(argc, argv);

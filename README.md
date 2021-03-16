@@ -91,7 +91,7 @@ Capital letters flip axes.
 For example, for `xYz` the y-axis is flipped.
 This is useful for importing models from software where a different axis is being used for "up".
 
-##### `--ss`
+##### `-u/--super`
 enables 2x supersampling.
 The model is voxelized at double resolution and then downscaled.
 See below for more details.
