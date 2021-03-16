@@ -16,17 +16,17 @@ namespace {
 
 constexpr real_type EPSILON = real_type(1) / (1 << 16);
 
-inline bool isZero(real_type x)
+inline bool isZero(real_type x) noexcept
 {
     return std::fabs(x) < EPSILON;
 }
 
-inline bool eq(real_type x, u32 plane)
+inline bool eq(real_type x, u32 plane) noexcept
 {
     return isZero(x - real_type(plane));
 }
 
-inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, u32 axis, u32 plane)
+inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, u32 axis, u32 plane) noexcept
 {
     real_type d = -dir[axis];
     return isZero(d) ? 0 : (org[axis] - real_type(plane)) / d;
@@ -39,7 +39,7 @@ inline real_type intersect_ray_axisPlane(Vec3 org, Vec3 dir, u32 axis, u32 plane
  * @param normal the normalized normal of the plane
  * @return the signed distance of the point and the plane
  */
-constexpr real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal)
+constexpr real_type distance_point_plane(Vec3 p, Vec3 org, Vec3 normal) noexcept
 {
     return dot(normal, p - org);
 }
@@ -56,7 +56,7 @@ constexpr WeightedCombineFunction<T> combineFunction =
 
 /// Emplaces a weighted type in a map at the given location or combines it with the already value.
 template <ColorStrategy STRATEGY, typename T>
-inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> color)
+inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> color) noexcept
 {
     auto [location, success] = map.emplace(pos, color);
     if (not success) {
@@ -64,7 +64,7 @@ inline void insertWeighted(VoxelMap<Weighted<T>> &map, Vec3u pos, Weighted<T> co
     }
 }
 
-constexpr WeightedCombineFunction<Vec3f> combineFunctionOf(ColorStrategy colorStrategy)
+constexpr WeightedCombineFunction<Vec3f> combineFunctionOf(ColorStrategy colorStrategy) noexcept
 {
     return colorStrategy == ColorStrategy::BLEND ? combineFunction<ColorStrategy::BLEND, Vec3>
                                                  : combineFunction<ColorStrategy::MAX, Vec3>;
@@ -120,7 +120,7 @@ struct SplittingValues {
     bool loVertices[4];
     bool planarVertices[4];
 
-    SplittingValues(u32 plane, u8 axis, const Triangle &triangle) : plane{plane}, axis{axis}
+    SplittingValues(u32 plane, u8 axis, const Triangle &triangle) noexcept : plane{plane}, axis{axis}
     {
         for (unsigned i = 0; i < 3; ++i) {
             planarVertices[i] = eq(triangle.vertex(i)[axis], plane);
@@ -133,22 +133,22 @@ struct SplittingValues {
         }
     }
 
-    u8 firstLo() const
+    constexpr u8 firstLo() const noexcept
     {
         return loVertices[0] ? 0 : loVertices[1] ? 1 : 2;
     }
 
-    u8 firstHi() const
+    constexpr u8 firstHi() const noexcept
     {
         return not loVertices[0] ? 0 : not loVertices[1] ? 1 : 2;
     }
 
-    u8 firstPlanar() const
+    constexpr u8 firstPlanar() const noexcept
     {
         return planarVertices[0] ? 0 : planarVertices[1] ? 1 : 2;
     }
 
-    u8 firstNonplanar() const
+    constexpr u8 firstNonplanar() const noexcept
     {
         return not planarVertices[0] ? 0 : not planarVertices[1] ? 1 : 2;
     }
@@ -157,12 +157,12 @@ struct SplittingValues {
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_onePlanarCase(const TexturedTriangle &t,
                                  SplittingValues val,
-                                 LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+                                 LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi) noexcept;
 
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_regularCase(const TexturedTriangle &t,
                                SplittingValues val,
-                               LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi);
+                               LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi) noexcept;
 
 /**
  * @brief Splits a single triangle into multiple triangles on a specified axis plane.
@@ -175,8 +175,11 @@ void splitTriangle_regularCase(const TexturedTriangle &t,
  * @param outHi the output vector for higher triangles
  */
 template <DiscardMode DISCARD_MODE = DiscardMode::NONE>
-void splitTriangle(
-    const u32 axis, const u32 plane, const TexturedTriangle &t, split_buffer_type &outLo, split_buffer_type &outHi)
+void splitTriangle(const u32 axis,
+                   const u32 plane,
+                   const TexturedTriangle &t,
+                   split_buffer_type &outLo,
+                   split_buffer_type &outHi) noexcept
 {
     VXIO_DEBUG_ASSERT_LT(axis, 3);
 
@@ -239,7 +242,7 @@ void splitTriangle(
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_onePlanarCase(const TexturedTriangle &t,
                                  const SplittingValues val,
-                                 const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
+                                 const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi) noexcept
 {
     const unsigned planarIndex = val.firstPlanar();
     const unsigned nonPlanarIndices[2]{(planarIndex + 1) % 3, (planarIndex + 2) % 3};
@@ -278,7 +281,7 @@ void splitTriangle_onePlanarCase(const TexturedTriangle &t,
 template <DiscardMode DISCARD_MODE>
 void splitTriangle_regularCase(const TexturedTriangle &t,
                                const SplittingValues val,
-                               const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi)
+                               const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi) noexcept
 {
     VXIO_DEBUG_ASSERT(val.loSum == 1 || val.loSum == 2);
     VXIO_DEBUG_ASSERT_EQ(val.planarSum, 0);
@@ -336,7 +339,7 @@ void splitTriangle_regularCase(const TexturedTriangle &t,
  * Each triangle in the buffer is split into four smaller triangles if its volume in the voxel grid is too great.
  * @param triangles the buffer of triangles
  */
-void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<TexturedTriangle> &out)
+void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<TexturedTriangle> &out) noexcept
 {
     constexpr usize volumeLimit = 512;
     constexpr real_type sqrtThird = real_type(0.5773502691896257645091487805019574556476017512701268760186023264);
@@ -387,7 +390,7 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
 [[nodiscard]] WeightedUv computeTrianglesUvInVoxel(const VisualTriangle &inputTriangle,
                                                    Vec3u32 pos,
                                                    split_buffer_type *preSplitBuffer,
-                                                   split_buffer_type *postSplitBuffer)
+                                                   split_buffer_type *postSplitBuffer) noexcept
 {
     for (unsigned hi = 0; hi < 2; ++hi) {
         const auto splittingFunction =
@@ -433,7 +436,7 @@ void voxelizeSubTriangle(const VisualTriangle &inputTriangle,
                          Vec3u32 max,
                          split_buffer_type *preSplitBuffer,
                          split_buffer_type *postSplitBuffer,
-                         VoxelMap<WeightedUv> &out)
+                         VoxelMap<WeightedUv> &out) noexcept
 {
     // sqrt(3) = 1.73... with some leeway to account for imprecision
     constexpr real_type distanceLimit = 2;
@@ -486,7 +489,7 @@ void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 ma
     VXIO_ASSERT(uvBuffer.empty());
 
     voxelizeTriangleToUvBuffer(triangle, min, max);
-    insertUvBufferIntoVoxels(triangle);
+    moveUvBufferIntoVoxels(triangle);
 }
 
 void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept
@@ -511,7 +514,7 @@ void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, 
     }
 }
 
-void Voxelizer::insertUvBufferIntoVoxels(const VisualTriangle &inputTriangle) noexcept
+void Voxelizer::moveUvBufferIntoVoxels(const VisualTriangle &inputTriangle) noexcept
 {
     for (auto &[index, weightedUv] : uvBuffer) {
         Vec3u32 pos = uvBuffer.posOf(index);

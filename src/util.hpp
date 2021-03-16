@@ -43,7 +43,7 @@ namespace detail {
  * @brief Applies a binary function to each component of two vectors and returns the result.
  */
 template <typename T, size_t N, typename BinaryFunction>
-constexpr Vec<T, N> applyBinary(Vec<T, N> a, Vec<T, N> b, BinaryFunction function)
+constexpr Vec<T, N> applyBinary(Vec<T, N> a, Vec<T, N> b, BinaryFunction function) noexcept
 {
     Vec<T, N> result{};
     for (usize i = 0; i < N; ++i) {
@@ -56,7 +56,7 @@ constexpr Vec<T, N> applyBinary(Vec<T, N> a, Vec<T, N> b, BinaryFunction functio
  * @brief Applies a unary function to each component of two vectors and returns the result.
  */
 template <typename T, size_t N, typename UnaryFunction>
-constexpr Vec<T, N> applyUnary(Vec<T, N> a, UnaryFunction function)
+constexpr Vec<T, N> applyUnary(Vec<T, N> a, UnaryFunction function) noexcept
 {
     Vec<T, N> result{};
     for (usize i = 0; i < N; ++i) {
@@ -69,7 +69,7 @@ constexpr Vec<T, N> applyUnary(Vec<T, N> a, UnaryFunction function)
 
 /// Returns the component-wise min.
 template <typename T, size_t N>
-constexpr Vec<T, N> min(Vec<T, N> a, Vec<T, N> b)
+constexpr Vec<T, N> min(Vec<T, N> a, Vec<T, N> b) noexcept
 {
     using function_type = const T &(*) (const T &, const T &);
     return detail::applyBinary<T, N, function_type>(a, b, std::min<T>);
@@ -77,7 +77,7 @@ constexpr Vec<T, N> min(Vec<T, N> a, Vec<T, N> b)
 
 /// Returns the component-wise min.
 template <typename T, size_t N>
-constexpr Vec<T, N> max(Vec<T, N> a, Vec<T, N> b)
+constexpr Vec<T, N> max(Vec<T, N> a, Vec<T, N> b) noexcept
 {
     using function_type = const T &(*) (const T &, const T &);
     return detail::applyBinary<T, N, function_type>(a, b, std::max<T>);
@@ -85,7 +85,7 @@ constexpr Vec<T, N> max(Vec<T, N> a, Vec<T, N> b)
 
 /// Three-parameter min. For Vec types, returns the component-wise minimum.
 template <typename T>
-constexpr T min(const T &a, const T &b, const T &c)
+constexpr T min(const T &a, const T &b, const T &c) noexcept
 {
     if constexpr (voxelio::isVec<T>) {
         return obj2voxel::min(a, obj2voxel::min(b, c));
@@ -97,7 +97,7 @@ constexpr T min(const T &a, const T &b, const T &c)
 
 /// Three-parameter min. For Vec types, returns the component-wise maximum.
 template <typename T>
-constexpr T max(const T &a, const T &b, const T &c)
+constexpr T max(const T &a, const T &b, const T &c) noexcept
 {
     if constexpr (voxelio::isVec<T>) {
         return obj2voxel::max(a, obj2voxel::max(b, c));
@@ -109,7 +109,7 @@ constexpr T max(const T &a, const T &b, const T &c)
 
 /// Computes the component-wise floor of the vector.
 template <typename T, size_t N>
-constexpr Vec<T, N> floor(Vec<T, N> v)
+constexpr Vec<T, N> floor(Vec<T, N> v) noexcept
 {
     T (*function)(T) = std::floor;
     return detail::applyUnary<T, N>(v, function);
@@ -117,7 +117,7 @@ constexpr Vec<T, N> floor(Vec<T, N> v)
 
 /// Computes the component-wise ceil of the vector.
 template <typename T, size_t N>
-constexpr Vec<T, N> ceil(Vec<T, N> v)
+constexpr Vec<T, N> ceil(Vec<T, N> v) noexcept
 {
     T (*function)(T) = std::ceil;
     return detail::applyUnary<T, N>(v, function);
@@ -125,7 +125,7 @@ constexpr Vec<T, N> ceil(Vec<T, N> v)
 
 /// Computes the component-wise abs of the vector.
 template <typename T, size_t N>
-constexpr Vec<T, N> abs(Vec<T, N> v)
+constexpr Vec<T, N> abs(Vec<T, N> v) noexcept
 {
     T (*function)(T) = std::abs;
     return detail::applyUnary<T, N>(v, function);
@@ -133,7 +133,7 @@ constexpr Vec<T, N> abs(Vec<T, N> v)
 
 /// Computes the length or magnitude of the vector.
 template <typename T, size_t N>
-T length(Vec<T, N> v)
+T length(Vec<T, N> v) noexcept
 {
     T result = std::sqrt(dot<T, T, N>(v, v));
     return result;
@@ -141,14 +141,14 @@ T length(Vec<T, N> v)
 
 /// Divides a vector by its length.
 template <typename T, size_t N>
-constexpr Vec<T, N> normalize(Vec<T, N> v)
+constexpr Vec<T, N> normalize(Vec<T, N> v) noexcept
 {
     return v / length(v);
 }
 
 /// Mixes or linearly interpolates two vectors.
 template <typename T, size_t N>
-constexpr Vec<T, N> mix(Vec<T, N> a, Vec<T, N> b, T t)
+constexpr Vec<T, N> mix(Vec<T, N> a, Vec<T, N> b, T t) noexcept
 {
     return (1 - t) * a + t * b;
 }
@@ -193,12 +193,12 @@ using voxel_map_base_type = std::map<K, V>;
 
 template <typename T>
 struct VoxelMap : public voxel_map_base_type<u64, T> {
-    static u64 indexOf(Vec3u32 pos)
+    static u64 indexOf(Vec3u32 pos) noexcept
     {
         return voxelio::ileave3(pos.x(), pos.y(), pos.z());
     }
 
-    static Vec3u32 posOf(u64 index)
+    static Vec3u32 posOf(u64 index) noexcept
     {
         Vec3u32 result;
         voxelio::dileave3(index, result.data());
@@ -209,13 +209,13 @@ struct VoxelMap : public voxel_map_base_type<u64, T> {
     using iterator = typename base_type::iterator;
 
     template <typename V>
-    std::pair<iterator, bool> emplace(Vec3u pos, V &&value)
+    std::pair<iterator, bool> emplace(Vec3u pos, V &&value) noexcept
     {
         return static_cast<base_type *>(this)->emplace(indexOf(pos), std::forward<V>(value));
     }
 
     template <typename V>
-    std::pair<iterator, bool> emplace(u64 index, V &&value)
+    std::pair<iterator, bool> emplace(u64 index, V &&value) noexcept
     {
         return static_cast<base_type *>(this)->emplace(index, std::forward<V>(value));
     }
@@ -226,7 +226,7 @@ struct VoxelMap : public voxel_map_base_type<u64, T> {
 struct AffineTransform {
     using vec_type = Vec<real_type, 3>;
 
-    static constexpr AffineTransform fromUnitTransform(int matrix[9], vec_type translation = vec_type::zero())
+    static constexpr AffineTransform fromUnitTransform(int matrix[9], vec_type translation = vec_type::zero()) noexcept
     {
         VXIO_DEBUG_ASSERT_NOTNULL(matrix);
         AffineTransform result{};
@@ -240,12 +240,12 @@ struct AffineTransform {
     vec_type matrix[3];
     vec_type translation;
 
-    constexpr AffineTransform(float scale = 1, vec_type translation = vec_type::zero())
+    constexpr AffineTransform(float scale = 1, vec_type translation = vec_type::zero()) noexcept
         : matrix{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, translation{translation}
     {
     }
 
-    constexpr bool isScale() const
+    constexpr bool isScale() const noexcept
     {
         for (usize i = 0; i < 3; ++i) {
             for (usize j = 0; j < 3; ++j) {
@@ -257,23 +257,23 @@ struct AffineTransform {
         return true;
     }
 
-    constexpr bool isUniformScale() const
+    constexpr bool isUniformScale() const noexcept
     {
         return isScale() && eqExactly(matrix[0][0], matrix[1][1]) && eqExactly(matrix[0][0], matrix[2][2]);
     }
 
-    constexpr vec_type row(usize i) const
+    constexpr vec_type row(usize i) const noexcept
     {
         return matrix[i];
     }
 
-    constexpr vec_type col(usize j) const
+    constexpr vec_type col(usize j) const noexcept
     {
         return {matrix[0][j], matrix[1][j], matrix[2][j]};
     }
 };
 
-constexpr AffineTransform::vec_type operator*(const AffineTransform &a, const AffineTransform::vec_type &v)
+constexpr AffineTransform::vec_type operator*(const AffineTransform &a, const AffineTransform::vec_type &v) noexcept
 {
     real_type x = dot(a.row(0), v);
     real_type y = dot(a.row(1), v);
@@ -281,7 +281,7 @@ constexpr AffineTransform::vec_type operator*(const AffineTransform &a, const Af
     return AffineTransform::vec_type{x, y, z} + a.translation;
 }
 
-constexpr AffineTransform operator*(const AffineTransform &lhs, const AffineTransform &rhs)
+constexpr AffineTransform operator*(const AffineTransform &lhs, const AffineTransform &rhs) noexcept
 {
     AffineTransform result{};
     for (usize i = 0; i < 3; ++i) {
