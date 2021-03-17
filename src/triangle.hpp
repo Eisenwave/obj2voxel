@@ -7,6 +7,8 @@
 #include "voxelio/image.hpp"
 #include "voxelio/vec.hpp"
 
+#include <optional>
+
 namespace obj2voxel {
 
 using namespace voxelio;
