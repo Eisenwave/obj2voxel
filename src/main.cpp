@@ -260,7 +260,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 {
     using namespace obj2voxel;
 
-    auto startTime = std::chrono::high_resolution_clock::now();
+    using clock_type = std::chrono::high_resolution_clock;
+    auto startTime = clock_type::now();
 
     initLogging();
 
@@ -344,8 +345,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
              strategyArg.Get(),
              unitTransform);
 
-    i64 nanos =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - startTime).count();
+    i64 nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(clock_type::now() - startTime).count();
 
     VXIO_LOG(IMPORTANT, "Done! (" + stringifyTime(static_cast<u64>(nanos), 2) + ')');
 }
