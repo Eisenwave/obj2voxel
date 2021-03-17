@@ -472,11 +472,12 @@ template <bool PARALLEL>
     VXIO_LOG(DEBUG, "Sorting triangles into chunks ...");
     const usize triangleCount = instance.triangles.size();
 
-    // FIXME don't just ignore user-configured mesh bounds if present
-    for (u32 i = 0; i < triangleCount; i += BATCH_SIZE) {
-        helper.findMeshBounds(i);
+    if (not instance.boundsKnown) {
+        for (u32 i = 0; i < triangleCount; i += BATCH_SIZE) {
+            helper.findMeshBounds(i);
+        }
+        helper.waitForCompletion();
     }
-    helper.waitForCompletion();
 
     instance.meshTransform = computeMeshTransform(instance);
 
@@ -804,8 +805,14 @@ void obj2voxel_set_mesh_boundaries(obj2voxel_instance *instance, const float bou
 {
     VXIO_ASSERT_NOTNULL(instance);
     VXIO_ASSERT_NOTNULL(bounds);
+    for (usize i = 0; i < 6; ++i) {
+        VXIO_ASSERTM(std::isfinite(bounds[i]), "Infinite mesh boundaries provided (" + stringify(bounds[i]) + ')');
+    }
     instance->meshMin = Vec3f{bounds};
     instance->meshMax = Vec3f{bounds + 3};
+    instance->boundsKnown = true;
+    VXIO_ASSERTM(obj2voxel::min(instance->meshMin, instance->meshMax) == instance->meshMin,
+                 "Lower mesh bound must be <= the maximum on each axis");
 }
 
 void obj2voxel_set_triangle_basic(obj2voxel_triangle *triangle, const float vertices[9])
