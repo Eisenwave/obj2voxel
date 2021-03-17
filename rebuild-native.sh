@@ -13,10 +13,11 @@ if [[ $# -ge 2 ]]; then
 fi
 
 WARNINGS="-Wall -Wpedantic -Wextra -Werror"
+FLAGS="-march=native"
 
 cmake -E make_directory build
 
-cmake -E env CXXFLAGS="$WARNINGS" \
+cmake -E env CXXFLAGS="$FLAGS $WARNINGS" \
     cmake -B build -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCMAKE_CXX_COMPILER="$COMPILER"
 
 make -B -C build -j $(nproc)
