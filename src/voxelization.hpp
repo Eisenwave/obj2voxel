@@ -9,7 +9,6 @@
 #include "voxelio/log.hpp"
 #include "voxelio/vec.hpp"
 
-#include <map>
 #include <vector>
 
 namespace obj2voxel {

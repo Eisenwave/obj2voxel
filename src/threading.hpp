@@ -3,9 +3,6 @@
 
 #include "ringbuffer.hpp"
 
-#include "voxelio/assert.hpp"
-#include "voxelio/primitives.hpp"
-
 #include <condition_variable>
 #include <mutex>
 
@@ -18,7 +15,7 @@ namespace obj2voxel::async {
  * In the cases where a pop() or push() would fail for a regular ring buffer, this implementation blocks the executing
  * thread until the operation can be completed.
  */
-template <typename T, usize N>
+template <typename T, std::size_t N>
 class RingBuffer {
     obj2voxel::RingBuffer<T, N> buffer{};
 
@@ -85,7 +82,7 @@ public:
     }
 
     /// Returns the current size thread-safely.
-    usize size() const noexcept
+    std::size_t size() const noexcept
     {
         std::lock_guard<std::mutex> lock{mutex};
         return buffer.size();
@@ -143,7 +140,7 @@ public:
 };
 
 /// An atomic counter which allows waiting until a certain value has been reached.
-template <typename T = umax>
+template <typename T = std::uintmax_t>
 class Counter {
 public:
     using type = T;

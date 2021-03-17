@@ -3,8 +3,6 @@
 #include "constants.hpp"
 
 #include <cmath>
-#include <set>
-#include <vector>
 
 namespace obj2voxel {
 
