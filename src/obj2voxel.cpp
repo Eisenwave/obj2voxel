@@ -72,7 +72,16 @@ public:
 
 // INSTANCE DEFINITION =================================================================================================
 
-enum class IoType { MISSING, FILE, MEMORY_FILE, CALLBACK };
+enum class IoType {
+    /// No input or output was specified.
+    MISSING,
+    /// A file opened for reading/writing.
+    FILE,
+    /// A file in memory, backed by ByteArrayXXStream.
+    MEMORY_FILE,
+    /// A callback for reading all triangles or for writing all voxels.
+    CALLBACK
+};
 
 struct TypedFile {
     const char *path;
@@ -506,7 +515,6 @@ template <bool PARALLEL>
     instance.voxelSink->finalize();
 
     VXIO_LOG(INFO, "All " + stringifyLargeInt(instance.voxelSink->voxelsWritten()) + " voxels written");
-    VXIO_LOG(INFO, "Done!");
     return OBJ2VOXEL_ERR_OK;
 }
 

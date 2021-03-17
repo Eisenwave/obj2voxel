@@ -10,6 +10,7 @@
 #include "voxelio/stringmanip.hpp"
 #include "voxelio/vec.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -215,8 +216,7 @@ void initLogging()
 }  // namespace
 }  // namespace obj2voxel
 
-#ifndef OBJ2VOXEL_MANUAL_TEST
-static void parsePermutation(std::string str, int outUnitTransform[9])
+[[maybe_unused]] static void parsePermutation(std::string str, int outUnitTransform[9])
 {
     using namespace voxelio;
 
@@ -256,17 +256,16 @@ static void parsePermutation(std::string str, int outUnitTransform[9])
     }
 }
 
-int main(int argc, char **argv)
-#else
-int main()
-#endif
+int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 {
     using namespace obj2voxel;
+
+    auto startTime = std::chrono::high_resolution_clock::now();
 
     initLogging();
 
 #ifdef OBJ2VOXEL_MANUAL_TEST
-    constexpr int unitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    constexpr int identityUnitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
     return mainImpl("//home/user/assets/mesh/sword/sword.obj",
                     "/home/user/assets/mesh/sword/sword_128.vl32",
                     "",
@@ -276,8 +275,9 @@ int main()
                     "",
                     DEFAULT_SUPERSAMPLE,
                     OBJ2VOXEL_MAX_STRATEGY,
-                    unitTransform);
-#else
+                    identityUnitTransform);
+#endif
+
     const std::unordered_map<std::string, obj2voxel_enum_t> strategyMap{{"max", OBJ2VOXEL_MAX_STRATEGY},
                                                                         {"blend", OBJ2VOXEL_BLEND_STRATEGY}};
     const unsigned threadCount = std::thread::hardware_concurrency();
@@ -343,5 +343,9 @@ int main()
              ssArg.Get(),
              strategyArg.Get(),
              unitTransform);
-#endif
+
+    i64 nanos =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now() - startTime).count();
+
+    VXIO_LOG(IMPORTANT, "Done! (" + stringifyTime(static_cast<u64>(nanos), 2) + ')');
 }
