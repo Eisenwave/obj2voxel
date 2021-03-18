@@ -1,13 +1,13 @@
 # obj2voxel
 
-![voxelized sword](img/sword_voxelized.png)
+image:img/sword_voxelized.png[voxelized sword]
 
 **obj2voxel** is a command-line voxelizer for Wavefront OBJ files.
-It uses [tinyobj](https://github.com/tinyobjloader/tinyobjloader) for loading OBJ files and [voxel-io](https://github.com/Eisenwave/voxel-io) for writing voxel models.
+It uses link:https://github.com/tinyobjloader/tinyobjloader[tinyobj] for loading OBJ files and link:https://github.com/Eisenwave/voxel-io[voxel-io] for writing voxel models.
 
 ## Installation
 
-Download the [latest release](https://github.com/eisenwave/obj2voxel/releases) executable.
+Download the link:https://github.com/eisenwave/obj2voxel/releases[latest release] executable.
 There are prebuilt binaries for Windows and Linux.
 Or, if you want to build from source, proceed as follows (on Linux):
 
@@ -31,82 +31,122 @@ After installing, the executable will be in your `build` directory.
 
 ### General Options
 
-##### `-h/--help`
+.`-h/--help`
+[%collapsible]
+====
 displays the help menu.
 The help menu is also displayed if not enough options were provided.
+====
 
-##### `-v/--verbose`
+.`-v/--verbose`
+[%collapsible]
+====
 enables verbose logging.
 Time stamps, source code locations and debug messages will be displayed.
+====
 
-##### `--80`
+.`--80`
+[%collapsible]
+====
 enables 80-column displaying of the help menu.
 By default, more columns than 80 may be printed which may not be compatible with your terminal.
+====
+
 
 ### File Options
 
-##### `input_file` (required)
+.`input_file` (required)
+[%collapsible]
+====
 is the relative or absolute path to the input file.
 Depending on the extension `.stl` or `.obj` a different input format is chosen.
 If the file type can't be detected, the default is Wavefront OBJ.
-  
-##### `output_file` (required)
+====
+ 
+.`output_file` (required)
+[%collapsible]
+====
 is the relative or absolue path to the output file.
 Depending on the extension `.ply`, `.qef`, etc. a different output format is chosen.
 Check the list of supported formats.
 There is no default so obj2voxel fails if the file type can't be identified by its extension.
+====
 
-##### `-i (obj|stl)`
+.`-i (obj|stl)`
+[%collapsible]
+====
 is the explicit input format.
 This allows specifying an extension such as `obj` or `stl` explictly for files with no extension.
 By default, this is not necessary.
+====
 
-##### `-o (ply|qef|vl32|vox|xyzrgb)`
+.`-o (ply|qef|vl32|vox|xyzrgb)`
+[%collapsible]
+====
 is the explicit output format.
 This allows specifying an extension such as `qef` or `vox` explictly for files with no extension.
 By default, this is not necessary.
+====
 
-##### `-t <texture>`
+.`-t <texture>`
+[%collapsible]
+====
 is the optional path to a texture file.
 This texture is used for triangles with UV coordinates but no materials.
 There are some models which don't have material libraries at all.
 This option is very useful for those types of models.
+====
 
 ### Voxelization Options
 
-##### `-r/--res <resolution>` (required)
+.`-r/--res <resolution>` (required)
+[%collapsible]
+====
 is the voxel grid resolution.
 This is a maximum for all axes, meaning that a non-cubical model will still fit into this block.
 The output model will be at most r³ voxels large.
+====
 
-##### `-s/--strat (max|blend)`
+.`-s/--strat (max|blend)`
+[%collapsible]
+====
 is a coloring strategy for when multiple triangles occupy one voxel.
 See below for more details on how this option impacts the voxels.
 The default is `max`.
+====
 
-##### `-p/--perm <permutation>`
+.`-p/--perm <permutation>`
+[%collapsible]
+====
 is the axis permutation.
 The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
 Capital letters flip axes.
 For example, for `xYz` the y-axis is flipped.
 This is useful for importing models from software where a different axis is being used for "up".
+====
 
-##### `-u/--super`
+.`-u/--super`
+[%collapsible]
+====
 enables 2x supersampling.
 The model is voxelized at double resolution and then downscaled.
 See below for more details.
+====
 
-##### `-j/--threads <threads>`
+.`-j/--threads <threads>`
+[%collapsible]
+====
 is the number of worker threads to be started.
 obj2voxel supports parallelism and if `threads` is not zero, worker threads will be started that voxelize many triangles simultaneously.
 This option is set to the number of hardware threads by default.
 You can also set it exactly to `0`, which disables paralellism completely.
 Setting it to `1` is usually pointless and ends up being slower than just using `-j 0`.
+====
 
 ### Usage Example
 
 A usual run of obj2voxel looks like this:
-![screenshot](img/terminal_screenshot.png)
+image:img/terminal_screenshot.png[screenshot]
 
 ### Max vs Blend Strategies
 
@@ -114,47 +154,63 @@ There are two strategies for combining colors in a voxelized model.
 When voxelizing, weighted colors are produced where the weights are the areas of the triangle sections inside of a
 voxel.
 
-- `max` means that the greatest triangle section is chosen for the color of a voxel.
+* `max` means that the greatest triangle section is chosen for the color of a voxel.
   Max produces sharper colors and doesn't introduce any colors that weren't in the original mesh.
   However, at low resolutions, it can look noisy and small details from the mesh might disappear.
-- `blend` means that triangle sections will be blended together using their weights.
+* `blend` means that triangle sections will be blended together using their weights.
   Blend produces smoother colors and reproduces smaller details at least somewhat.
   However, it introduces new colors and can make the model look blurry.
   For example, blend would produce a magenta edge between a red and blue triangle which might be unwanted.
 
-**Example 1:** "Spot" model. `max` is left, `blend` is right.<br>
-![blend vs max using Spot model](img/blend_vs_max_spot.png)
+**Example 1:** "Spot" model. `max` is left, `blend` is right. +
+image:img/blend_vs_max_spot.png[blend vs max using Spot model]
 
-**Example 2:** "Sword" model. `max` is bottom, `blend` is top.<br>
-![blend vs max using Sword model](img/blend_vs_max_sword.png)
+**Example 2:** "Sword" model. `max` is bottom, `blend` is top. +
+image:img/blend_vs_max_sword.png[blend vs max using Sword model]
 
 Supersampling can also improve color accuracy by voxelizing at a higher resolution and blending multiple voxels.
-In this comparison, the right cow is supersampled:<br>
-![regular vs 2x supersampling](img/supersampling_spot.png)
+In this comparison, the right cow is supersampled: +
+image:img/supersampling_spot.png[regular vs 2x supersampling]
 
 Supersampling will usually produce slightly more voxels.
   
 ## Supported Formats
 
-| Name                    | Extension | Purpose    |
-| ----------------------- | --------- | ---------- |
-| Wavefront OBJ           | `obj`     | Input      |
-| Stereolithography       | `stl`     | Input      |
-| Stanford Triangle       | `ply`     | Output     |
-| Qubicle Exchange Format | `qef`     | Output     |
-| Magica Voxel            | `vox`     | Output\*   |
-| VL32                    | `vl32`    | Output     |
-| XYZRGB                  | `xyzrgb`  | Output\*\* |
+[cols="2,1,1"]
+|===================================================
+| Name | Extension | Purpose
 
-**\*Warning:** VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
+| Wavefront OBJ
+| `obj` | Input
+
+| Stereolithography
+| `stl` | Input
+
+| Stanford Triangle
+| `ply` | Output
+
+| Qubicle Exchange Format
+| `qef` | Output
+
+| Magica Voxel
+| `vox` | Output&ast;
+
+| VL32
+| `vl32` | Output
+
+| XYZRGB
+| `xyzrgb`| Output&ast;&ast;
+|===================================================
+
+**&ast;Warning:** VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
 Use of streamable formats like VL32 is highly recommended, only use VOX for lower resolutions.
 
-**\*\*Note**: XYZRGB's official extension is `xyzrgb` but the software [*FileToVox*](https://github.com/Zarbuz/FileToVox) uses the extension `xyz` instead. Rename the files before importing into *FileToVox*.
+**&ast;&ast;Note:** XYZRGB's official extension is `xyzrgb` but the software link:https://github.com/Zarbuz/FileToVox[_FileToVox_] uses the extension `xyz` instead. Rename the files before importing into _FileToVox_.
 
 ### PLY
 
 The exported PLY files are point clouds consisting of vertices with integer coordinates:
-```ply
+```cpp
 ply
 format binary_big_endian 1.0
 element vertex ...
@@ -207,6 +263,7 @@ Even voxelizing at 8192 resolution might require only 100MB.
 ## Approach
 
 In case you're curious how obj2voxel voxelizes models:
+
 1. Triangles are first transformed from model space to voxel grid space.
 2. Triangles are then subdivided into smaller triangles if their bounding boxes are large.
    This reduces the number of wasted iterations in the next step.
