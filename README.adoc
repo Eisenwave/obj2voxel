@@ -202,13 +202,11 @@ Supersampling will usually produce slightly more voxels.
 | `xyzrgb`| Output&ast;&ast;
 |===================================================
 
-**&ast;Warning:** VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
-Use of streamable formats like VL32 is highly recommended, only use VOX for lower resolutions.
+### Notes
 
-**&ast;&ast;Note:** XYZRGB's official extension is `xyzrgb` but the software link:https://github.com/Zarbuz/FileToVox[_FileToVox_] uses the extension `xyz` instead. Rename the files before importing into _FileToVox_.
-
-### PLY
-
+.**Stanford Triangle (PLY)**
+[%collapsible]
+====
 The exported PLY files are point clouds consisting of vertices with integer coordinates:
 ```cpp
 ply
@@ -225,9 +223,11 @@ end_header
 ```
 voxel-io works with signed positions which is why `int` is used instead of `uint`, but the positions exported are always
 positive.
+====
 
-### VL32
-
+.**VL32**
+[%collapsible]
+====
 VL32 is a format used only by voxel-io.
 It's simply an array of `(x,y,z,argb)` 32-bit big-endian integer quadruples.
 VL32 is bit-identical to the PLY files exported by obj2voxel when the first **300** header bytes are removed.
@@ -245,6 +245,20 @@ while (not end_of_file_reached()) {
     uint8_t b = read_byte();
 }
 ```
+====
+
+.**Magica Voxel (VOX)**
+[%collapsible]
+====
+VOX support is still experimental; writing the file in the end can take a long time because building a 255-color palette is somewhat inefficient.
+Use of streamable formats like VL32 is highly recommended, only use VOX for lower resolutions.
+====
+
+.**XYZRGB**
+[%collapsible]
+====
+XYZRGB's official extension is `xyzrgb` but the software link:https://github.com/Zarbuz/FileToVox[_FileToVox_] uses the extension `xyz` instead. Rename the files before importing into _FileToVox_.
+====
 
 ## Performance
 
