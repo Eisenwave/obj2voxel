@@ -1,5 +1,8 @@
 # obj2voxel
 
+image::https://github.com/Eisenwave/obj2voxel/actions/workflows/linux.yml/badge.svg[linux,link=https://github.com/Eisenwave/obj2voxel/actions/workflows/linux.yml]
+image::https://github.com/Eisenwave/obj2voxel/actions/workflows/windows.yml/badge.svg[linux,link=https://github.com/Eisenwave/obj2voxel/actions/workflows/windows.yml]
+
 image:img/sword_voxelized.png[voxelized sword]
 
 **obj2voxel** is a command-line voxelizer for Wavefront OBJ files.
