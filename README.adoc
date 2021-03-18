@@ -145,7 +145,7 @@ Setting it to `1` is usually pointless and ends up being slower than just using 
 
 ### Usage Example
 
-A usual run of obj2voxel looks like this:
+A usual run of obj2voxel looks like this: +
 image:img/terminal_screenshot.png[screenshot]
 
 ### Max vs Blend Strategies
