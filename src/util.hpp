@@ -189,7 +189,7 @@ struct VoxelMap : public std::unordered_map<u64, T> {
 
     static constexpr Vec3u32 posOf(u64 index) noexcept
     {
-        Vec3u32 result;
+        Vec3u32 result{};
         voxelio::dileave3(index, result.data());
         return result;
     }
