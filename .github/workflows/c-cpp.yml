@@ -1,10 +1,6 @@
 name: C/C++ CI
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -31,3 +27,6 @@ jobs:
     - name: Make
       shell: bash
       run: make -C build
+      
+    - name: Run Tests
+      run: build/test/obj2voxel-test
