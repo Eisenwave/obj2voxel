@@ -1,0 +1,35 @@
+name: Windows
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Checkout submodules
+      shell: bash
+      run: |
+        git config --global url."https://github.com/".insteadOf "git@github.com:"
+        auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+        git submodule sync --recursive
+        git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
+      
+    - name: Make build directory
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: cmake -E make_directory build
+      
+    - name: CMake
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: MSBuild
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cd build
+        msbuild ALL_BUILD.vcxproj
