@@ -273,7 +273,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 
 #ifdef OBJ2VOXEL_MANUAL_TEST
     constexpr int identityUnitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
-    return mainImpl("//home/user/assets/mesh/sword/sword.obj",
+    return mainImpl("/home/user/assets/mesh/sword/sword.obj",
                     "/home/user/assets/mesh/sword/sword_2048.vl32",
                     "",
                     "",
