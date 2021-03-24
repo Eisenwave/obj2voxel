@@ -149,11 +149,16 @@ int mainImpl(std::string inFile,
     std::vector<std::thread> workers;
     workers.reserve(threads);
 
-    VXIO_LOG(DEBUG, "Starting up worker threads ...");
+    if (threads != 0) {
+        VXIO_LOG(DEBUG, "Starting up " + stringify(threads) + " worker threads ...");
 
-    for (usize i = 0; i < threads; ++i) {
-        auto &worker = workers.emplace_back(&obj2voxel_run_worker, instance);
-        VXIO_ASSERT(worker.joinable());
+        for (usize i = 0; i < threads; ++i) {
+            auto &worker = workers.emplace_back(&obj2voxel_run_worker, instance);
+            VXIO_ASSERT(worker.joinable());
+        }
+    }
+    else {
+        VXIO_LOG(DEBUG, "Running single-threaded (no worker threads started)");
     }
 
     obj2voxel_set_parallel(instance, threads != 0);
@@ -261,18 +266,19 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
     using namespace obj2voxel;
 
     using clock_type = std::chrono::high_resolution_clock;
-    auto startTime = clock_type::now();
+    const auto startTime = clock_type::now();
+    const unsigned threadCount = std::thread::hardware_concurrency();
 
     initLogging();
 
 #ifdef OBJ2VOXEL_MANUAL_TEST
     constexpr int identityUnitTransform[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
     return mainImpl("//home/user/assets/mesh/sword/sword.obj",
-                    "/home/user/assets/mesh/sword/sword_128.vl32",
+                    "/home/user/assets/mesh/sword/sword_2048.vl32",
                     "",
                     "",
-                    128,
-                    0,
+                    1024,
+                    threadCount,
                     "",
                     DEFAULT_SUPERSAMPLE,
                     OBJ2VOXEL_MAX_STRATEGY,
@@ -281,7 +287,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 
     const std::unordered_map<std::string, obj2voxel_enum_t> strategyMap{{"max", OBJ2VOXEL_MAX_STRATEGY},
                                                                         {"blend", OBJ2VOXEL_BLEND_STRATEGY}};
-    const unsigned threadCount = std::thread::hardware_concurrency();
 
     args::ArgumentParser parser("", CLI_FOOTER);
 
