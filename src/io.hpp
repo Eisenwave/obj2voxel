@@ -20,11 +20,21 @@ void writeTriangleAsBinaryToDebugStl(Triangle triangle);
 /// Dumps the debug STL file at the given file path.
 void dumpDebugStl(const std::string &path);
 
+enum class MeshType : obj2voxel_enum_t { TRIANGLE, QUAD };
+
 /**
  * @brief A Java-style iterator/stream which can be used to stream through the triangles of a mesh regardless of
  * internal format.
  */
 struct ITriangleStream {
+    static std::unique_ptr<ITriangleStream> fromSimpleMesh(MeshType type,
+                                                           const float vertices[],
+                                                           const usize vertexCount) noexcept;
+    static std::unique_ptr<ITriangleStream> fromIndexedMesh(MeshType type,
+                                                            const float vertices[],
+                                                            const usize elements[],
+                                                            usize elementCount) noexcept;
+
     static std::unique_ptr<ITriangleStream> fromCallback(obj2voxel_triangle_callback callback,
                                                          void *callbackData) noexcept;
 

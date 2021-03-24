@@ -73,13 +73,123 @@ struct CallbackTriangleStream final : public ITriangleStream {
     {
     }
 
-    bool next(VisualTriangle &out) noexcept final;
+    bool next(VisualTriangle &out) noexcept final
+    {
+        return callback(callbackData, &out);
+    }
 };
 
-bool CallbackTriangleStream::next(VisualTriangle &out) noexcept
-{
-    return callback(callbackData, &out);
-}
+template <usize PRIM_VERTICES, std::enable_if_t<PRIM_VERTICES == 3 || PRIM_VERTICES == 4, int> = 0>
+struct SimpleMeshTriangleStream final : public ITriangleStream {
+    static constexpr usize floatsPerVertex = 3;
+
+    const float *vertices;
+    usize vertexCount;
+
+    usize vertexIndex = 0;
+
+    SimpleMeshTriangleStream(const float vertices[], usize vertexCount) noexcept
+        : vertices{vertices}, vertexCount{vertexCount}
+    {
+        VXIO_ASSERT_EQ(vertexCount % PRIM_VERTICES, 0);
+    }
+
+    bool next(VisualTriangle &out) noexcept final
+    {
+        if (vertexIndex >= vertexCount) {
+            return false;
+        }
+
+        if (PRIM_VERTICES == 4 && (vertexIndex & 1)) {
+            out.v[0] = Vec3{vertices + (vertexIndex - 1) * floatsPerVertex};
+            out.v[1] = Vec3{vertices + (vertexIndex + 0) * floatsPerVertex};
+            out.v[2] = Vec3{vertices + (vertexIndex + 1) * floatsPerVertex};
+            ++vertexIndex;
+        }
+        else {
+            out.v[0] = Vec3{vertices + vertexIndex++ * floatsPerVertex};
+            out.v[1] = Vec3{vertices + vertexIndex++ * floatsPerVertex};
+            out.v[2] = Vec3{vertices + vertexIndex++ * floatsPerVertex};
+        }
+        return true;
+    }
+};
+
+template <usize PRIM_VERTICES, std::enable_if_t<PRIM_VERTICES == 3 || PRIM_VERTICES == 4, int> = 0>
+struct IndexedMeshTriangleStream final : public ITriangleStream {
+    static constexpr usize floatsPerVertex = 3;
+
+    const float *vertices;
+    const usize *elements;
+
+    usize elementCount;
+
+    usize elementIndex = 0;
+
+    IndexedMeshTriangleStream(const float vertices[], const usize elements[], usize elementCount) noexcept
+        : vertices{vertices}, elements{elements}, elementCount{elementCount}
+    {
+        VXIO_ASSERT_EQ(elementCount % PRIM_VERTICES, 0);
+    }
+
+    bool next(VisualTriangle &out) noexcept final
+    {
+        if (elementIndex >= elementCount) {
+            return false;
+        }
+
+        if (PRIM_VERTICES == 4 && (elementIndex & 1)) {
+            setVertex(out.v[0], -1);
+            setVertex(out.v[1], 0);
+            setVertex(out.v[2], 1);
+            elementIndex += 1;
+        }
+        else {
+            setVertex(out.v[0], 0);
+            setVertex(out.v[1], 1);
+            setVertex(out.v[2], 2);
+            elementIndex += 3;
+        }
+        return true;
+    }
+
+    void setVertex(Vec3 &dest, int elementOffset) const
+    {
+        const float *vertex = vertices + elements[elementIndex + static_cast<usize>(elementOffset)] * floatsPerVertex;
+        std::memcpy(dest.data(), vertex, sizeof(float) * floatsPerVertex);
+    }
+};
+
+struct StlTriangleStream final : public ITriangleStream {
+private:
+    std::vector<f32> vertices;
+    usize index = 0;
+
+public:
+    StlTriangleStream(std::vector<f32> vertices) noexcept : vertices{std::move(vertices)} {}
+
+    bool next(VisualTriangle &triangle) noexcept final
+    {
+        if (not hasNext()) {
+            return false;
+        }
+
+        for (usize i = 0; i < 3; ++i) {
+            index += 3;
+            triangle.v[i] = Vec3f{vertices.data() + index}.cast<real_type>();
+            triangle.t[i] = {};
+        }
+
+        triangle.type = TriangleType::MATERIALLESS;
+        return true;
+    }
+
+private:
+    bool hasNext() const noexcept
+    {
+        return index < vertices.size();
+    }
+};
 
 struct ObjTriangleStream final : public ITriangleStream {
 public:
@@ -128,23 +238,6 @@ private:
     usize faceCountOfShapeOrZero(usize index) const noexcept
     {
         return index >= shapes.size() ? 0 : shapes[index].mesh.num_face_vertices.size();
-    }
-};
-
-struct StlTriangleStream final : public ITriangleStream {
-private:
-    std::vector<f32> vertices;
-    usize index = 0;
-
-public:
-    StlTriangleStream(std::vector<f32> vertices) noexcept : vertices{std::move(vertices)} {}
-
-    bool next(VisualTriangle &out) noexcept final;
-
-private:
-    bool hasNext() const noexcept
-    {
-        return index < vertices.size();
     }
 };
 
@@ -218,23 +311,34 @@ bool ObjTriangleStream::next(VisualTriangle &triangle) noexcept
     return true;
 }
 
-bool StlTriangleStream::next(VisualTriangle &triangle) noexcept
+}  // namespace
+
+std::unique_ptr<ITriangleStream> ITriangleStream::fromSimpleMesh(MeshType type,
+                                                                 const float vertices[],
+                                                                 usize vertexCount) noexcept
 {
-    if (not hasNext()) {
-        return false;
+    switch (type) {
+    case MeshType::TRIANGLE:
+        return std::unique_ptr<ITriangleStream>{new SimpleMeshTriangleStream<3>{vertices, vertexCount}};
+    case MeshType::QUAD:
+        return std::unique_ptr<ITriangleStream>{new SimpleMeshTriangleStream<4>{vertices, vertexCount}};
     }
-
-    for (usize i = 0; i < 3; ++i) {
-        index += 3;
-        triangle.v[i] = Vec3f{vertices.data() + index}.cast<real_type>();
-        triangle.t[i] = {};
-    }
-
-    triangle.type = TriangleType::MATERIALLESS;
-    return true;
+    VXIO_ASSERT_UNREACHABLE();
 }
 
-}  // namespace
+std::unique_ptr<ITriangleStream> ITriangleStream::fromIndexedMesh(MeshType type,
+                                                                  const float vertices[],
+                                                                  const usize elements[],
+                                                                  usize elementCount) noexcept
+{
+    switch (type) {
+    case MeshType::TRIANGLE:
+        return std::unique_ptr<ITriangleStream>{new IndexedMeshTriangleStream<3>{vertices, elements, elementCount}};
+    case MeshType::QUAD:
+        return std::unique_ptr<ITriangleStream>{new IndexedMeshTriangleStream<4>{vertices, elements, elementCount}};
+    }
+    VXIO_ASSERT_UNREACHABLE();
+}
 
 std::unique_ptr<ITriangleStream> ITriangleStream::fromCallback(obj2voxel_triangle_callback callback,
                                                                void *callbackData) noexcept
