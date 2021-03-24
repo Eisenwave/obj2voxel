@@ -47,7 +47,7 @@ struct TriangleInput {
 
     TriangleInput(const float *vertices, size_t vertexCount) : vertices{vertices}, vertexCount{vertexCount}
     {
-        VXIO_ASSERT_EQ(vertexCount % 3, 0);
+        VXIO_ASSERT_DIVISIBLE(vertexCount, 3);
     }
 
     bool next(obj2voxel_triangle *triangle)
@@ -58,8 +58,8 @@ struct TriangleInput {
             return false;
         }
 
-        vertexIndex += 3;
         obj2voxel_set_triangle_basic(triangle, vertices + vertexIndex * floatsPerTriangle);
+        vertexIndex += 3;
         return true;
     }
 };
@@ -76,7 +76,7 @@ struct IndexedPrimitiveInput {
     IndexedPrimitiveInput(const float *vertices, const size_t *elements, size_t elementCount)
         : vertices{vertices}, elements{elements}, elementCount{elementCount}
     {
-        VXIO_ASSERT_EQ(elementCount % PRIM_VERTICES, 0);
+        VXIO_ASSERT_DIVISIBLE(elementCount, PRIM_VERTICES);
     }
 
     bool next(obj2voxel_triangle *triangle)
