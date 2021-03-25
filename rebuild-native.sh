@@ -15,6 +15,7 @@ fi
 WARNINGS="-Wall -Wpedantic -Wextra -Werror"
 FLAGS="-march=native"
 
+cmake -E remove_directory build
 cmake -E make_directory build
 
 cmake -E env CXXFLAGS="$FLAGS $WARNINGS" \
