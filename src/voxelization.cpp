@@ -332,33 +332,27 @@ void splitTriangle_regularCase(const TexturedTriangle &t,
 
 // SUBDIVISION =========================================================================================================
 
-/**
- * @brief Subdivides a buffer of triangles.
- * Each triangle in the buffer is split into four smaller triangles if its volume in the voxel grid is too great.
- * @param triangles the buffer of triangles
- */
-void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<TexturedTriangle> &out) noexcept
+constexpr bool isRoughlyAlignedWithAnyAxisPlane(const TexturedTriangle &triangle) noexcept
 {
-    constexpr usize volumeLimit = 512;
     constexpr real_type sqrtThird = real_type(0.5773502691896257645091487805019574556476017512701268760186023264);
     constexpr Vec3 diagonal3 = {sqrtThird, sqrtThird, sqrtThird};
 
     // If a triangle is parallel to one of the axes, we don't need to subdivide it.
     // Even if the volume is large, very few intersection tests will fail.
-    const Vec3 normal = normalize(abs(inputTriangle.normal()));
+    const Vec3 normal = normalize(abs(triangle.normal()));
     const real_type diagonality = dot(normal, diagonal3);
     const real_type diagonality01 = (diagonality - sqrtThird) / (1 - sqrtThird);
 
-    VXIO_DEBUG_ASSERT(out.empty());
-    out.push_back(inputTriangle);
+    return diagonality01 < COS_SUBDIVISION_DIAGONALITY_LIMIT;
+}
 
-    // This corresponds to an angle of 60° or higher from the diagonal vector
-    if (diagonality01 < 1 / 2.f) {
-        return;
-    }
+template <typename Action, std::enable_if_t<std::is_invocable_v<Action, TexturedTriangle>, int> = 0>
+void forEachSubdividedTriangle(std::vector<TexturedTriangle> &buffer, Action action) noexcept
+{
+    VXIO_ASSERT_EQ(buffer.size(), 1);
 
-    for (usize i = 0; i < out.size();) {
-        const TexturedTriangle triangle = out[i];
+    do {
+        TexturedTriangle &triangle = buffer.back();
 
         const Vec3u32 vmin = triangle.voxelMin();
         const Vec3u32 vmax = triangle.voxelMax();
@@ -366,8 +360,9 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
         const Vec3u32 size = vmax - vmin;
         const u32 volume = size[0] * size[1] * size[2];
 
-        if (volume < volumeLimit) {
-            ++i;
+        if (volume < SUBDIVISION_VOLUME_LIMIT) {
+            buffer.pop_back();
+            action(triangle);
             continue;
         }
 
@@ -376,11 +371,11 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
         // We don't increment i here so that we can subdivide the center piece again if necessary.
         TexturedTriangle subTriangles[4];
         triangle.subdivide4(subTriangles);
-        out[i] = std::move(subTriangles[0]);
+        triangle = std::move(subTriangles[0]);
         for (usize j = 1; j < 4; ++j) {
-            out.push_back(std::move(subTriangles[j]));
+            buffer.push_back(std::move(subTriangles[j]));
         }
-    }
+    } while (not buffer.empty());
 }
 
 // VOXELIZATION ========================================================================================================
@@ -417,7 +412,7 @@ void subdivideLargeVolumeTriangles(TexturedTriangle inputTriangle, std::vector<T
     VXIO_DEBUG_ASSERTM(not postSplitBuffer->empty(), "Function should have been returned from early otherwise");
 
     WeightedUv result{};
-    for (const TexturedTriangle t : *postSplitBuffer) {
+    for (const TexturedTriangle &t : *postSplitBuffer) {
         const float weight = static_cast<float>(inputTriangle.area());
         const Vec2f uv = t.textureCenter();
 
@@ -492,23 +487,26 @@ void Voxelizer::voxelize(const VisualTriangle &triangle, Vec3u32 min, Vec3u32 ma
 
 void Voxelizer::voxelizeTriangleToUvBuffer(const VisualTriangle &inputTriangle, Vec3u32 min, Vec3u32 max) noexcept
 {
-    subdivisionBuffer.clear();
+    VXIO_DEBUG_ASSERT(subdivisionBuffer.empty());
+
     preSplitBuffer.clear();
     postSplitBuffer.clear();
     uvBuffer.clear();
 
-    // 1. Subdivide
-    subdivideLargeVolumeTriangles(inputTriangle, subdivisionBuffer);
-
-    if constexpr (voxelio::build::DEBUG) {
-        for (const Triangle &t : subdivisionBuffer) {
-            globalTriangleDebugCallback(t);
+    auto action = [this, &inputTriangle, min, max](const TexturedTriangle &subTriangle) {
+        if constexpr (build::DEBUG) {
+            globalTriangleDebugCallback(subTriangle);
         }
-    }
-
-    // 2. Voxelize
-    for (TexturedTriangle subTriangle : subdivisionBuffer) {
         voxelizeSubTriangle(inputTriangle, subTriangle, min, max, &preSplitBuffer, &postSplitBuffer, uvBuffer);
+    };
+
+    if (isRoughlyAlignedWithAnyAxisPlane(inputTriangle)) {
+        action(inputTriangle);
+    }
+    else {
+        subdivisionBuffer.push_back(inputTriangle);
+        forEachSubdividedTriangle(subdivisionBuffer, action);
+        VXIO_DEBUG_ASSERT(subdivisionBuffer.empty());
     }
 }
 
