@@ -292,8 +292,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 
     auto ggroup = args::Group(parser, "General Options:");
     auto helpArg = args::HelpFlag(ggroup, "help", HELP_DESCR, {'h', "help"});
-    auto verboseArg = args::Flag(ggroup, "verbose", VERBOSE_DESCR, {'v', "verbose"});
     auto eightyArg = args::Flag(ggroup, "eighty", EIGHTY_DESCR, {"80"});
+    auto verboseArg = args::Flag(ggroup, "verbose", VERBOSE_DESCR, {'v', "verbose"});
+    auto versionArg = args::Flag(ggroup, "version", VERBOSE_DESCR, {'V', "version"});
 
     auto fgroup = args::Group(parser, "File Options:");
     auto inFileArg = args::Positional<std::string>(fgroup, "INPUT_FILE", INPUT_DESCR);
@@ -316,6 +317,29 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
     complete &= outFileArg.Matched();
     complete &= resolutionArg.Matched();
 
+    if (versionArg.Matched() && not helpArg.Matched()) {
+        std::cout << VERSION_HEADER << '\n';
+        std::cout << "Version:  " << VERSION_STR << '\n';
+        std::cout << "Builtins: ";
+#ifdef VXIO_HAS_BUILTIN_IS_CONSTANT_EVALUATED
+        std::cout << "ceval;";
+#endif
+#ifdef VXIO_HAS_BUILTIN_CLZ
+        std::cout << "clz;";
+#endif
+#ifdef VXIO_HAS_BUILTIN_MSB
+        std::cout << "msb;";
+#endif
+#ifdef VXIO_HAS_BUILTIN_BSWAP
+        std::cout << "bswap;";
+#endif
+#ifdef VXIO_HAS_BUILTIN_PDEP
+        std::cout << "pdep;";
+#endif
+        std::cout << '\n';
+        return 0;
+    }
+
     if (helpArg.Matched() || not complete) {
         parser.helpParams.width = eightyArg.Matched() ? 80 : 120;
         parser.helpParams.usageString = "Usage: ";
@@ -327,7 +351,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
         parser.helpParams.programName = "obj2voxel";
         parser.helpParams.addNewlineBeforeDescription = false;
         parser.Help(std::cout);
-        return 1;
+        return not complete;
     }
 
     if (verboseArg.Matched()) {

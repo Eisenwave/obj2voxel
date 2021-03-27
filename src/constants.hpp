@@ -10,6 +10,10 @@ namespace obj2voxel {
 constexpr uint32_t CHUNK_SIZE = 64;
 constexpr uint32_t BATCH_SIZE = 1024;
 
+constexpr size_t SUBDIVISION_VOLUME_LIMIT = 512;
+// This corresponds to an angle of 60° or higher from the diagonal vector
+constexpr float COS_SUBDIVISION_DIAGONALITY_LIMIT = 0.5f;
+
 constexpr bool DEFAULT_SUPERSAMPLE = false;
 constexpr obj2voxel_enum_t DEFAULT_COLOR_STRATEGY = OBJ2VOXEL_MAX_STRATEGY;
 
@@ -19,10 +23,14 @@ constexpr obj2voxel_enum_t RELEASE_LOG_LEVEL = OBJ2VOXEL_LOG_LEVEL_INFO;
 constexpr bool ENABLE_ASYNC_LOGGING = true;
 constexpr bool ENABLE_PLANE_DISTANCE_TEST = true;
 
+constexpr const char *VERSION_HEADER = "===== obj2voxel =====";
+constexpr const char *VERSION_STR = "1.3.5-dev";
+
 constexpr const char *CLI_FOOTER = "Visit at https://github.com/eisenwave/obj2voxel";
 
 constexpr const char *HELP_DESCR = "Display this help menu.";
 constexpr const char *VERBOSE_DESCR = "Enables verbose logging.";
+constexpr const char *VERSION_DESCR = "Displays the version and other information.";
 constexpr const char *EIGHTY_DESCR = "Print help menu in 80 column mode.";
 
 constexpr const char *INPUT_DESCR = "First argument. Path to input file.";
