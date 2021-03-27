@@ -268,7 +268,7 @@ int main()
     }
 
 #ifndef LOG_LEVEL_STACK_DISABLED
-    VXIO_ASSERT_EQ(logLevelStack.size(), 0);
+    VXIO_ASSERT_EQ(logLevelStack.size(), 0u);
 #endif
 
     VXIO_LOG(IMPORTANT, "All tests passed");

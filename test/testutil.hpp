@@ -47,7 +47,7 @@ struct TriangleInput {
 
     TriangleInput(const float *vertices, size_t vertexCount) : vertices{vertices}, vertexCount{vertexCount}
     {
-        VXIO_ASSERT_DIVISIBLE(vertexCount, 3);
+        VXIO_ASSERT_DIVISIBLE(vertexCount, 3u);
     }
 
     bool next(obj2voxel_triangle *triangle)
