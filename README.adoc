@@ -37,22 +37,29 @@ After installing, the executable will be in your `build` directory.
 .`-h/--help`
 [%collapsible]
 ====
-displays the help menu.
+Displays the help menu.
 The help menu is also displayed if not enough options were provided.
-====
-
-.`-v/--verbose`
-[%collapsible]
-====
-enables verbose logging.
-Time stamps, source code locations and debug messages will be displayed.
 ====
 
 .`--80`
 [%collapsible]
 ====
-enables 80-column displaying of the help menu.
+Enables 80-column displaying of the help menu.
 By default, more columns than 80 may be printed which may not be compatible with your terminal.
+====
+
+.`-V/--version`
+[%collapsible]
+====
+Enables verbose logging.
+Time stamps, source code locations and debug messages will be displayed.
+====
+
+.`-v/--verbose`
+[%collapsible]
+====
+Displays information about the current obj2voxel version and a list of builtins which the program was compiled with.
+The builtins list is largely irrelevant to the user but can be helpful information for maintainers.
 ====
 
 
@@ -61,7 +68,7 @@ By default, more columns than 80 may be printed which may not be compatible with
 .`input_file` (required)
 [%collapsible]
 ====
-is the relative or absolute path to the input file.
+The relative or absolute path to the input file.
 Depending on the extension `.stl` or `.obj` a different input format is chosen.
 If the file type can't be detected, the default is Wavefront OBJ.
 ====
@@ -69,7 +76,7 @@ If the file type can't be detected, the default is Wavefront OBJ.
 .`output_file` (required)
 [%collapsible]
 ====
-is the relative or absolue path to the output file.
+The relative or absolue path to the output file.
 Depending on the extension `.ply`, `.qef`, etc. a different output format is chosen.
 Check the list of supported formats.
 There is no default so obj2voxel fails if the file type can't be identified by its extension.
@@ -78,7 +85,7 @@ There is no default so obj2voxel fails if the file type can't be identified by i
 .`-i (obj|stl)`
 [%collapsible]
 ====
-is the explicit input format.
+The explicit input format.
 This allows specifying an extension such as `obj` or `stl` explictly for files with no extension.
 By default, this is not necessary.
 ====
@@ -86,7 +93,7 @@ By default, this is not necessary.
 .`-o (ply|qef|vl32|vox|xyzrgb)`
 [%collapsible]
 ====
-is the explicit output format.
+The explicit output format.
 This allows specifying an extension such as `qef` or `vox` explictly for files with no extension.
 By default, this is not necessary.
 ====
@@ -94,7 +101,7 @@ By default, this is not necessary.
 .`-t <texture>`
 [%collapsible]
 ====
-is the optional path to a texture file.
+The optional path to a texture file.
 This texture is used for triangles with UV coordinates but no materials.
 There are some models which don't have material libraries at all.
 This option is very useful for those types of models.
@@ -105,7 +112,7 @@ This option is very useful for those types of models.
 .`-r/--res <resolution>` (required)
 [%collapsible]
 ====
-is the voxel grid resolution.
+The voxel grid resolution.
 This is a maximum for all axes, meaning that a non-cubical model will still fit into this block.
 The output model will be at most r³ voxels large.
 ====
@@ -113,47 +120,8 @@ The output model will be at most r³ voxels large.
 .`-s/--strat (max|blend)`
 [%collapsible]
 ====
-is a coloring strategy for when multiple triangles occupy one voxel.
-See below for more details on how this option impacts the voxels.
-The default is `max`.
-====
-
-.`-p/--perm <permutation>`
-[%collapsible]
-====
-is the axis permutation.
-The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
-Capital letters flip axes.
-For example, for `xYz` the y-axis is flipped.
-This is useful for importing models from software where a different axis is being used for "up".
-====
-
-.`-u/--super`
-[%collapsible]
-====
-enables 2x supersampling.
-The model is voxelized at double resolution and then downscaled.
-See below for more details.
-====
-
-.`-j/--threads <threads>`
-[%collapsible]
-====
-is the number of worker threads to be started.
-obj2voxel supports parallelism and if `threads` is not zero, worker threads will be started that voxelize many triangles simultaneously.
-This option is set to the number of hardware threads by default.
-You can also set it exactly to `0`, which disables paralellism completely.
-Setting it to `1` is usually pointless and ends up being slower than just using `-j 0`.
-====
-
-### Usage Example
-
-A usual run of obj2voxel looks like this: +
-image:img/terminal_screenshot.png[screenshot]
-
-### Max vs Blend Strategies
-
-There are two strategies for combining colors in a voxelized model.
+The coloring strategy for when multiple triangles occupy one voxel.
+The default strategy is `max`.
 When voxelizing, weighted colors are produced where the weights are the areas of the triangle sections inside of a
 voxel.
 
@@ -168,14 +136,46 @@ voxel.
 **Example 1:** "Spot" model. `max` is left, `blend` is right. +
 image:img/blend_vs_max_spot.png[blend vs max using Spot model]
 
-**Example 2:** "Sword" model. `max` is bottom, `blend` is top. +
+**Example 2:** "Sword" model. `blend` is top, `max` is bottom. +
 image:img/blend_vs_max_sword.png[blend vs max using Sword model]
+====
 
-Supersampling can also improve color accuracy by voxelizing at a higher resolution and blending multiple voxels.
+.`-p/--perm <permutation>`
+[%collapsible]
+====
+The axis permutation and optionally, axis flipping.
+The default is `xyz`; another order such as `xzy` may be specified to reorder axes.
+Capital letters flip axes.
+For example, for `xYz` the y-axis is flipped.
+This is useful for importing models from software where a different axis is being used for "up".
+====
+
+.`-u/--super`
+[%collapsible]
+====
+Enables 2x supersampling.
+The model is voxelized at double resolution and then downscaled.
+Supersampling will usually produce slightly more voxels.
+
+Supersampling can improve color accuracy by voxelizing at a higher resolution and blending multiple voxels.
 In this comparison, the right cow is supersampled: +
 image:img/supersampling_spot.png[regular vs 2x supersampling]
+====
 
-Supersampling will usually produce slightly more voxels.
+.`-j/--threads <threads>`
+[%collapsible]
+====
+The number of worker threads to be started.
+obj2voxel supports parallelism and if `threads` is not zero, worker threads will be started that voxelize many triangles simultaneously.
+This option is set to the number of hardware threads by default.
+You can also set it exactly to `0`, which disables paralellism completely.
+Setting it to `1` is usually pointless and ends up being slower than just using `-j 0`.
+====
+
+### Usage Example
+
+A usual run of obj2voxel looks like this: +
+image:img/terminal_screenshot.png[screenshot]
   
 ## Supported Formats
 
