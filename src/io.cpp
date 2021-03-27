@@ -47,7 +47,7 @@ void dumpDebugStl(const std::string &path)
     std::optional<FileOutputStream> stlDump = FileOutputStream::open(path);
     VXIO_ASSERT(stlDump.has_value());
     stlDump->write(buffer, sizeof(buffer));
-    VXIO_ASSERT_EQ(globalDebugStl.size() % 50, 0);
+    VXIO_ASSERT_DIVISIBLE(globalDebugStl.size(), 50u);
     stlDump->writeLittle<u32>(static_cast<u32>(globalDebugStl.size() / 50));
 
     ByteArrayInputStream inStream{globalDebugStl};
@@ -91,7 +91,7 @@ struct SimpleMeshTriangleStream final : public ITriangleStream {
     SimpleMeshTriangleStream(const float vertices[], usize vertexCount) noexcept
         : vertices{vertices}, vertexCount{vertexCount}
     {
-        VXIO_ASSERT_EQ(vertexCount % PRIM_VERTICES, 0);
+        VXIO_ASSERT_DIVISIBLE(vertexCount, PRIM_VERTICES);
     }
 
     bool next(VisualTriangle &out) noexcept final
@@ -129,7 +129,7 @@ struct IndexedMeshTriangleStream final : public ITriangleStream {
     IndexedMeshTriangleStream(const float vertices[], const usize elements[], usize elementCount) noexcept
         : vertices{vertices}, elements{elements}, elementCount{elementCount}
     {
-        VXIO_ASSERT_EQ(elementCount % PRIM_VERTICES, 0);
+        VXIO_ASSERT_DIVISIBLE(elementCount, PRIM_VERTICES);
     }
 
     bool next(VisualTriangle &out) noexcept final
