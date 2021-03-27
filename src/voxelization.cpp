@@ -179,7 +179,7 @@ void splitTriangle(const u32 axis,
                    split_buffer_type &outLo,
                    split_buffer_type &outHi) noexcept
 {
-    VXIO_DEBUG_ASSERT_LT(axis, 3);
+    VXIO_DEBUG_ASSERT_LT(axis, 3u);
 
     const SplittingValues val{plane, static_cast<u8>(axis), t};
     const LoHiPusher<DISCARD_MODE> pushLoIfTrueElseHi{outLo, outHi};
@@ -349,7 +349,7 @@ constexpr bool isRoughlyAlignedWithAnyAxisPlane(const TexturedTriangle &triangle
 template <typename Action, std::enable_if_t<std::is_invocable_v<Action, TexturedTriangle>, int> = 0>
 void forEachSubdividedTriangle(std::vector<TexturedTriangle> &buffer, Action action) noexcept
 {
-    VXIO_ASSERT_EQ(buffer.size(), 1);
+    VXIO_ASSERT_EQ(buffer.size(), 1u);
 
     do {
         TexturedTriangle &triangle = buffer.back();

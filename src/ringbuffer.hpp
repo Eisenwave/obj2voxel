@@ -29,7 +29,7 @@ public:
     /// This method fails if the buffer is empty.
     constexpr T pop() noexcept
     {
-        VXIO_DEBUG_ASSERT_NE(avail, 0);
+        VXIO_DEBUG_ASSERT_NE(avail, 0u);
         --avail;
         r = (r + 1) % N;
         return std::move(content[r]);
@@ -55,7 +55,7 @@ public:
     /// This method fails if the buffer is empty.
     constexpr const T &peek() const noexcept
     {
-        VXIO_DEBUG_ASSERT_NE(avail, 0);
+        VXIO_DEBUG_ASSERT_NE(avail, 0u);
         return content[r];
     }
 

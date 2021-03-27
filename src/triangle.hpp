@@ -39,7 +39,7 @@ struct Triangle {
     /// Returns a vertex at a given index in [0,3).
     constexpr Vec3 vertex(usize index) const noexcept
     {
-        VXIO_DEBUG_ASSERT_LT(index, 3);
+        VXIO_DEBUG_ASSERT_LT(index, 3u);
         return v[index];
     }
 
@@ -64,14 +64,14 @@ struct Triangle {
     /// Returns the minimum coordinate of this triangle on one axis.
     constexpr real_type min(usize i) const noexcept
     {
-        VXIO_DEBUG_ASSERT_LT(i, 3);
+        VXIO_DEBUG_ASSERT_LT(i, 3u);
         return obj2voxel::min(v[0][i], v[1][i], v[2][i]);
     }
 
     /// Returns the minimum coordinate of this triangle on one axis.
     constexpr real_type max(usize i) const noexcept
     {
-        VXIO_DEBUG_ASSERT_LT(i, 3);
+        VXIO_DEBUG_ASSERT_LT(i, 3u);
         return obj2voxel::max(v[0][i], v[1][i], v[2][i]);
     }
 
@@ -120,7 +120,7 @@ struct TexturedTriangle : public Triangle {
     /// Returns the texture coordinates at the index in [0,3).
     constexpr Vec2f texture(usize index) const noexcept
     {
-        VXIO_DEBUG_ASSERT_LT(index, 3);
+        VXIO_DEBUG_ASSERT_LT(index, 3u);
         return t[index];
     }
 

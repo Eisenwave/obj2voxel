@@ -272,7 +272,7 @@ void voxelizeChunk(obj2voxel_instance &instance, Voxelizer &voxelizer, u32 chunk
     }
 
     if (instance.supersampling > 1) {
-        VXIO_ASSERT_LT(instance.supersampling, 3);
+        VXIO_ASSERT_LT(instance.supersampling, 3u);
         voxelizer.downscale();
     }
 
@@ -375,7 +375,7 @@ AffineTransform computeMeshTransform(obj2voxel_instance &instance)
     const real_type maxOfAllAxes = obj2voxel::max(meshSize[0], meshSize[1], meshSize[2]);
     const real_type sampleScale = real_type(instance.sampleResolution) - ANTI_BLEED;
 
-    VXIO_DEBUG_ASSERT_NE(instance.sampleResolution, 0);
+    VXIO_DEBUG_ASSERT_NE(instance.sampleResolution, 0u);
 
     // translate to positive octant [0, t]
     AffineTransform result{1, -instance.meshMin};
@@ -684,7 +684,7 @@ void obj2voxel_set_log_callback(obj2voxel_log_callback *callback, void *callback
 void obj2voxel_set_resolution(obj2voxel_instance *instance, uint32_t resolution)
 {
     VXIO_ASSERT_NOTNULL(instance);
-    VXIO_ASSERT_NE(resolution, 0);
+    VXIO_ASSERT_NE(resolution, 0u);
     instance->outputResolution = resolution;
     instance->sampleResolution = resolution * instance->supersampling;
 }
@@ -692,7 +692,7 @@ void obj2voxel_set_resolution(obj2voxel_instance *instance, uint32_t resolution)
 void obj2voxel_set_supersampling(obj2voxel_instance *instance, uint32_t level)
 {
     VXIO_ASSERT_NOTNULL(instance);
-    VXIO_ASSERT_NE(level, 0);
+    VXIO_ASSERT_NE(level, 0u);
     instance->supersampling = level;
     instance->sampleResolution = instance->outputResolution * instance->supersampling;
 }
@@ -914,8 +914,8 @@ bool obj2voxel_texture_load_pixels(
 {
     VXIO_ASSERT_NOTNULL(texture);
     VXIO_ASSERT_NOTNULL(pixels);
-    VXIO_ASSERT_LT(channels, 5);
-    VXIO_ASSERT_GT(channels, 0);
+    VXIO_ASSERT_LT(channels, 5u);
+    VXIO_ASSERT_GT(channels, 0u);
 
     size_t size = size_t{width} * height * channels;
     auto data = std::make_unique<uint8_t[]>(size);

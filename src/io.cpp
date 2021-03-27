@@ -250,7 +250,7 @@ bool ObjTriangleStream::next(VisualTriangle &triangle) noexcept
     tinyobj::shape_t &shape = shapes[shapesIndex];
 
     usize vertexCount = shape.mesh.num_face_vertices[faceIndex];
-    VXIO_DEBUG_ASSERT_EQ(vertexCount, 3);
+    VXIO_DEBUG_ASSERT_EQ(vertexCount, 3u);
 
     bool hasTexCoords = true;
 
