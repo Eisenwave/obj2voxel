@@ -10,6 +10,7 @@
 #include "voxelio/format/vox.hpp"
 #include "voxelio/format/xyzrgb.hpp"
 
+#include "voxelio/fstream.hpp"
 #include "voxelio/filetype.hpp"
 #include "voxelio/log.hpp"
 #include "voxelio/stream.hpp"
@@ -44,8 +45,8 @@ void writeTriangleAsBinaryToDebugStl(Triangle triangle)
 void dumpDebugStl(const std::string &path)
 {
     u8 buffer[80]{};
-    std::optional<FileOutputStream> stlDump = FileOutputStream::open(path);
-    VXIO_ASSERT(stlDump.has_value());
+    std::optional<FileOutputStream> stlDump = FileOutputStream(path, OpenMode::WRITE);
+    VXIO_ASSERT(stlDump->good());
     stlDump->write(buffer, sizeof(buffer));
     VXIO_ASSERT_DIVISIBLE(globalDebugStl.size(), 50u);
     stlDump->writeLittle<u32>(static_cast<u32>(globalDebugStl.size() / 50));
@@ -394,8 +395,8 @@ std::unique_ptr<ITriangleStream> ITriangleStream::fromObjFile(const std::string 
 
 std::unique_ptr<ITriangleStream> ITriangleStream::fromStlFile(const std::string &inFile) noexcept
 {
-    std::optional<FileInputStream> stream = FileInputStream::open(inFile);
-    if (not stream.has_value()) {
+    std::optional<FileInputStream> stream = FileInputStream(inFile, OpenMode::READ);
+    if (not stream->good()) {
         VXIO_LOG(ERROR, "Failed to open STL file: \"" + inFile + "\"");
         return nullptr;
     }
@@ -438,8 +439,8 @@ std::optional<Texture> loadTexture(const std::string &name, const std::string &m
 {
     std::string sanitizedName = name;
     std::replace(sanitizedName.begin(), sanitizedName.end(), '\\', '/');
-    std::optional<FileInputStream> stream = FileInputStream::open(sanitizedName, OpenMode::BINARY);
-    if (not stream.has_value()) {
+    std::optional<FileInputStream> stream = FileInputStream(sanitizedName, OpenMode::BINARY);
+    if (not stream->good()) {
         VXIO_LOG(WARNING, "Failed to open texture file \"" + sanitizedName + "\" of material \"" + material + '"');
         return std::nullopt;
     }
