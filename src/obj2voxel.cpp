@@ -6,6 +6,7 @@
 #include "voxelization.hpp"
 
 #include "voxelio/format/png.hpp"
+#include "voxelio/fstream.hpp"
 #include "voxelio/stringify.hpp"
 
 #include <atomic>
@@ -556,8 +557,8 @@ std::unique_ptr<IVoxelSink> openOutput(obj2voxel_instance &instance)
     }
 
     case IoType::FILE: {
-        std::optional<FileOutputStream> stream = FileOutputStream::open(output.file.path, OpenMode::BINARY);
-        if (not stream.has_value()) {
+        std::optional<FileOutputStream> stream = FileOutputStream(output.file.path, OpenMode::BINARY);
+        if (not stream->good()) {
             return nullptr;
         }
 
@@ -873,8 +874,8 @@ bool obj2voxel_texture_load_from_file(obj2voxel_texture *texture, const char *fi
         return false;
     }
 
-    std::optional<FileInputStream> fileStream = FileInputStream::open(file, OpenMode::BINARY);
-    if (not fileStream.has_value()) {
+    std::optional<FileInputStream> fileStream = FileInputStream(file, OpenMode::BINARY);
+    if (not fileStream->good()) {
         return false;
     }
     std::string error;
